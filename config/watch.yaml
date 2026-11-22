@@ -1,0 +1,4 @@
+# watch（阶段 4）的采集设置。阶段 1 只提供配置入口。
+poll_interval_seconds: 60
+presets: [60, 300]
+stream_first: true

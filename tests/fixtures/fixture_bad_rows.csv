@@ -1,0 +1,5 @@
+instrument_root,contract_id,timeframe,bar_start_utc,open,high,low,close,volume,source,fetched_at_utc,fixture
+ES,ESZ2025,5m,2025-11-20T14:30:00Z,5000,5001,4999,5000.5,100,fixsrc,,1
+ES,ESZ2025,5m,2025-11-20T14:35:00Z,5000,4999,4999,5000.5,100,fixsrc,,1
+ES,ESZ2025,5m,2025-11-20T14:40:00Z,5000.1,5001.1,4999.1,5000.6,100,fixsrc,,1
+ES,ESZ2025,5m,2025-11-20T14:45:00Z,5000,5001,4999,5000.5,100,fixsrc,,1

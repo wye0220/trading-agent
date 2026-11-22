@@ -1,0 +1,31 @@
+[project]
+name = "trading-agent"
+version = "0.1.0"
+description = "trading-agent：ES RTH 5 分钟、行情只读、纸面模拟"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "databento-dbn==0.74.0",
+    "zstandard==0.25.0",
+    "webull-openapi-python-sdk==3.1.0",
+    "exchange_calendars==4.13.3",
+    "PyYAML==6.0.4",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trading_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not realdata and not webull_live' -q"
+filterwarnings = ["ignore::DeprecationWarning:exchange_calendars", "ignore:Series.values returning:Warning"]
+markers = [
+    "realdata: 需要数据根目录里的真实 Databento 文件，默认不运行",
+    "webull_live: 需要 Webull 凭证并联网，默认不运行",
+]
