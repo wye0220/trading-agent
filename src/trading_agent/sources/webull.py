@@ -123,7 +123,7 @@ class WebullBars:
         dc = self._client()
         try:
             resp = dc.futures_market_data.get_futures_history_bars(
-                [symbol], CATEGORY, TIMESPAN[timeframe], count=str(min(count, MAX_COUNT)),
+                symbol, CATEGORY, TIMESPAN[timeframe], count=str(min(count, MAX_COUNT)),   # 这个接口要字符串：SDK 不会替列表拼接，传列表会导致签名无效
                 real_time_required=True,
                 start_time=None if start_utc is None else start_utc * 1000,
                 end_time=None if end_utc is None else end_utc * 1000)

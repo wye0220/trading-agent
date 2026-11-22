@@ -248,7 +248,7 @@ def test_credentials_never_leak(env, monkeypatch, caplog):
         r = collect(env, ad, H.et(D1, 9, 50, 10))
     assert r["ok"] and r["rows_written"] == 3
     assert seen["init"] == (key, secret, "us") and seen["flags"] == (True, True)
-    assert seen["call"][0] == ["ESZ5"] and seen["call"][1] == "US_FUTURES" and seen["call"][2] == "M5"
+    assert seen["call"][0] == "ESZ5" and seen["call"][1] == "US_FUTURES" and seen["call"][2] == "M5"
     blob = buf.getvalue() + caplog.text + str(r)
     for p in env.root.rglob("*.csv"):
         blob += p.read_text(encoding="utf-8")

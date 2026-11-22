@@ -20,10 +20,10 @@
 
 | 任务 | 原因 |
 | --- | --- |
-| 7.1 实测 Webull 能否取 ES 期货 K 线 | 项目里没有 `.env`，没有凭证，无法联网核实 |
-| 7.2 Webull 适配器用录制的真实响应测试 | 没有真实响应可录。适配器已写好，目前只用按 SDK 文档假定的返回形状测试，没有冒充成录制样本 |
-| 12.3 手工运行一次 `collect` | 同上 |
-| 12.6 三组测试全部通过 | `webull_live` 这一组失败（`CREDENTIALS_MISSING`），另两组通过 |
+| 7.1 实测 Webull 能否取 ES 期货 K 线 | 2026-11-22 已实测：凭证有效（股票快照 200），但期货接口返回 `MARKET_DATA_NOT_SUBSCRIBED`，账号没有 `US_FUTURES` 行情订阅。按任务约定在此停下，不改用 SPY 代理 |
+| 7.2 Webull 适配器用录制的真实响应测试 | 取不到期货 K 线，没有真实响应可录。适配器已写好，目前只用按 SDK 文档假定的返回形状测试，没有冒充成录制样本 |
+| 12.3 手工运行一次 `collect` | 运行了，按设计失败：没有写任何行，写了一条 `COLLECT_FAILED` 告警，退出码 1 |
+| 12.6 三组测试全部通过 | `webull_live` 这一组失败（`MARKET_DATA_NOT_SUBSCRIBED`），另两组通过 |
 
 Webull 采集因此**还不能算可用**：能否取到 ES 期货、代码格式、时间戳是起始还是结束时刻，都没有核实。
 
@@ -44,7 +44,7 @@ Webull 采集因此**还不能算可用**：能否取到 ES 期货、代码格�
 | --- | --- |
 | `uv run pytest` | 127 passed |
 | `uv run pytest -m realdata` | 4 passed |
-| `uv run pytest -m webull_live` | 1 failed：`CREDENTIALS_MISSING` |
+| `uv run pytest -m webull_live` | 1 failed：`MARKET_DATA_NOT_SUBSCRIBED` |
 | `uv run python -m trading_agent ingest`（空库） | 71.9 秒；读 3,945,840 条 = 入库 3,425,254 + 价差 520,581 + 异常 5；丢弃价差代码 132 个 |
 | `uv run python -m trading_agent ingest`（重跑） | 6.8 秒；2 个文件跳过，新增 0 |
 | `uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z` | `WAIT`，`ESU2026`，来源 databento，17 根，重复运行快照摘要相同 |

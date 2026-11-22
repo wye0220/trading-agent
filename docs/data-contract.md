@@ -67,11 +67,13 @@
 
 `collect` 用 Webull OpenAPI SDK 的行情接口 `futures_market_data.get_futures_history_bars`，类别 `US_FUTURES`，周期 `M5`，一次最多 1200 根。
 
-**尚未用真实凭证核实的项目**（本机没有配置凭证，见下文"假设"）：
+**核实状态**（2026-11-22 用真实凭证试过；因为账号没有期货行情订阅，下表除第一行外仍未核实）：
+
+已确认的一点：`get_futures_history_bars` 的 `symbols` 要传字符串。SDK 不会替列表拼接，传列表时服务器返回 `UNAUTHORIZED: Header x-signature is invalid`。适配器已改为传字符串。
 
 | 项目 | 目前的做法 | 核实后可能要改的地方 |
 | --- | --- | --- |
-| 账号能否取到 ES 期货 K 线 | 未知 | 取不到则 Webull 这条路不可用 |
+| 账号能否取到 ES 期货 K 线 | **2026-11-22 实测：不能。** 凭证有效（股票快照返回 200），但期货快照和期货 K 线都返回 `MARKET_DATA_NOT_SUBSCRIBED`（需要订阅 `US_FUTURES` 行情） | 订阅后重跑 `uv run pytest -m webull_live -s` |
 | 期货代码格式 | 一位年份短代码，如 `ESZ6`（SDK 文档示例是 `ESZ3`） | `contracts.short_symbol` |
 | 返回结构 | 兼容 `[{symbol, result:[...]}]`、`{result:[...]}`、`{data:[...]}` 和裸列表 | `sources/webull.py` 的 `parse` |
 | `time` 字段口径 | 按 K 线**起始**时刻处理 | `parse`；若实际是结束时刻，所有线会晚一格 |
