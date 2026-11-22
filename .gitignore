@@ -18,3 +18,5 @@ webull_*.log
 # 生成的报告
 reports/*
 !reports/.gitkeep
+data/
+.DS_Store
