@@ -1,6 +1,6 @@
 # 阶段 1 汇报：数据合同与项目骨架
 
-日期：2026-11-22。分支：`phase-1-data-contract`（未合并到 `main`）。变更：`openspec/changes/bootstrap-data-contract/`。
+日期：2026-11-22。分支：`phase-1-data-contract`（未合并到 `main`）。变更：`openspec/changes/archive/2026-11-22-bootstrap-data-contract/`。
 
 ## 1. 完成项与未完成项
 
