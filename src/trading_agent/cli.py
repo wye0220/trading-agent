@@ -40,6 +40,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--through", metavar="YYYY-MM-DD",
                             help="开发可见截止日：晚于它的 K 线不进运行库（覆盖 config/paths.yaml 的 dev_visible_through）")
             sp.add_argument("--no-report", action="store_true", help="不生成数据可得性报告")
+            sp.add_argument("--rebuild", action="store_true",
+                            help="清空派生数据和交易日状态后从原始 K 线重算（改了换月规则等配置后使用）")
         if name == "scan":
             sp.add_argument("--as-of", metavar="ISO8601", help="决策时点（UTC，或带时区）。缺省为当前时刻")
         if name not in IMPLEMENTED:
@@ -85,7 +87,7 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None) -> int:
                       args.json, f"错误：--through 不是合法日期：{args.through}")
                 return 2
             db.open_release(settings).close()        # 只建表，不写 active 指针
-            s = run_ingest(settings, con, through=through, write_report=not args.no_report)
+            s = run_ingest(settings, con, through=through, write_report=not args.no_report, rebuild=args.rebuild)
             text = (f"导入完成（{s['run_id']}，{s['seconds']} 秒）：处理 {s['files_imported']} 个文件，跳过 {s['files_skipped']} 个，"
                     f"不支持 {s['files_unsupported']} 个，拒收 {s['files_rejected']} 个；新增 K 线 {s['bars_inserted']:,}，"
                     f"新 revision {s['revisions_added']:,}，跳过重复 {s['duplicates_skipped']:,}；"

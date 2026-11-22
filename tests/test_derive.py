@@ -122,23 +122,23 @@ def test_reference_levels_regular_day(env):
 
 
 def test_reference_levels_on_roll_day(env):
-    # roll-v1：2025-12-11 起实际合约为 ESH2026。前一日只有 ESZ2025 的数据。
-    before, roll = date(2025, 12, 10), date(2025, 12, 11)
+    # roll-v2：2025-12-15 起实际合约为 ESH2026。前一日只有 ESZ2025 的数据。
+    before, roll = date(2025, 12, 12), date(2025, 12, 15)
     H.write_csv(env.root / "fixture.csv",
                 H.rth_bars(before, contract="ESZ2025") + H.rth_bars(roll, contract="ESH2026"))
     env.ingest()
-    lv = env.con.execute("SELECT * FROM reference_levels WHERE trading_day='2025-12-11'").fetchone()
+    lv = env.con.execute("SELECT * FROM reference_levels WHERE trading_day='2025-12-15'").fetchone()
     assert lv["contract_id"] == "ESH2026" and lv["pdh"] is None and lv["prev_rth_close"] is None
     assert lv["prev_day_status"] == "UNAVAILABLE:CONTRACT_ROLLED_NO_PRIOR_DATA"
 
 
 def test_reference_levels_on_roll_day_when_new_contract_traded_before(env):
-    before, roll = date(2025, 12, 10), date(2025, 12, 11)
+    before, roll = date(2025, 12, 12), date(2025, 12, 15)
     H.write_csv(env.root / "fixture.csv",
                 H.rth_bars(before, contract="ESZ2025", base=5000) + H.rth_bars(before, contract="ESH2026", base=5050)
                 + H.rth_bars(roll, contract="ESH2026", base=5060))
     env.ingest()
-    lv = env.con.execute("SELECT * FROM reference_levels WHERE trading_day='2025-12-11'").fetchone()
+    lv = env.con.execute("SELECT * FROM reference_levels WHERE trading_day='2025-12-15'").fetchone()
     assert lv["prev_day_status"] == "OK" and lv["pdl"] == (5050 - 1) * 4      # 取自新合约，不是旧合约
 
 
@@ -198,3 +198,20 @@ def test_derived_rebuild_is_identical(env):
     affected = derive.rebuild(env.con, env.settings, derive.all_raw_keys(env.con))
     days.refresh(env.con, env.settings, affected)
     assert dump() == before and anomalies() == a_before
+
+
+def test_rebuild_after_roll_rule_change(env):
+    """换月规则变了以后，ingest --rebuild 重算每个交易日的实际合约；原始 K 线不变。"""
+    import dataclasses
+    d = date(2025, 12, 11)                        # roll-v1 下是 ESH2026，roll-v2 下还是 ESZ2025
+    H.write_csv(env.root / "fixture.csv", H.rth_bars(d, contract="ESZ2025") + H.rth_bars(d, contract="ESH2026", base=5050))
+    env.ingest()
+    row = lambda: tuple(env.con.execute("SELECT contract_id, roll_rule_version, complete FROM trading_days").fetchone())   # noqa: E731
+    assert row() == ("ESZ2025", "roll-v2", 1)
+    raw = env.count("derived=0")
+    old = dataclasses.replace(env.settings.instruments["ES"], roll_rule_version="roll-v1")
+    env.settings.instruments["ES"] = old
+    s = env.ingest(rebuild=True)
+    assert s["rebuilt"] is True and s["bars_inserted"] == 0 and env.count("derived=0") == raw
+    assert row() == ("ESH2026", "roll-v1", 1)
+    assert env.scan(H.et(d, 12, 0))["contract_id"] == "ESH2026"

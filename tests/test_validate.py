@@ -59,7 +59,7 @@ def test_dst_weeks_no_false_gaps(env):
     days = [date(2025, 3, 7), date(2025, 3, 10), date(2025, 10, 31), date(2025, 11, 3)]
     rows = []
     for d in days:
-        c = "ESH2025" if d < date(2025, 3, 13) else "ESZ2025"
+        c = "ESH2025" if d < date(2025, 3, 17) else "ESZ2025"
         rows += H.rth_bars(d, contract=c)
     H.write_csv(env.root / "fixture.csv", rows)
     env.ingest()
@@ -79,7 +79,7 @@ def test_thin_bar_hint(env):
 
 # ---------------------------------------------------------------- 9.3 换月一致性
 def test_wrong_contract(env):
-    roll = date(2025, 12, 11)                    # roll-v1 指定 ESH2026
+    roll = date(2025, 12, 15)                    # roll-v2 指定 ESH2026
     H.write_csv(env.root / "fixture.csv", H.rth_bars(roll, contract="ESZ2025"))
     env.ingest()
     d = env.con.execute("SELECT * FROM trading_days").fetchone()
@@ -173,7 +173,7 @@ def test_snapshot_same_input_same_hash(env):
     assert env.con.execute("SELECT COUNT(*) FROM market_snapshots").fetchone()[0] == 1
     assert env.con.execute("SELECT COUNT(*) FROM scan_events").fetchone()[0] == 1          # 重跑不重复
     s = env.con.execute("SELECT * FROM market_snapshots").fetchone()
-    assert s["roll_rule_version"] == "roll-v1" and s["calendar_version"] == sessions.CALENDAR_VERSION
+    assert s["roll_rule_version"] == "roll-v2" and s["calendar_version"] == sessions.CALENDAR_VERSION
     assert s["source"] == "fixsrc" and s["contract_id"] == "ESZ2025" and s["bar_count"] == 29
 
 

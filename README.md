@@ -33,6 +33,7 @@ uv run pytest                 # 单元测试，全部用合成数据
 uv run python -m trading_agent ingest
 uv run python -m trading_agent ingest --json
 uv run python -m trading_agent ingest --through 2025-12-31    # 晚于该交易日的 K 线不进运行库
+uv run python -m trading_agent ingest --rebuild               # 改了换月规则等配置后：从原始 K 线重算派生数据和交易日状态
 
 # 数据校验 + 封存快照。阶段 1 只会给出 WAIT 或 DATA_ERROR，不产生信号
 uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z

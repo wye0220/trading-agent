@@ -72,15 +72,15 @@ def test_roll_rule_vs_volume_cross(env):
     days = sessions.trading_days(date(2025, 12, 8), date(2025, 12, 17))
     rows = []
     for d in days:
-        new_leads = d >= date(2025, 12, 15)
+        new_leads = d >= date(2025, 12, 16)
         rows += real(d, contract="ESZ2025", volume=10 if new_leads else 100)
         rows += real(d, contract="ESH2026", volume=100 if new_leads else 10)
     H.write_csv(env.root / "real.csv", rows)
     env.ingest()
     (roll,) = data(env)["roots"]["ES"]["rolls"]
-    assert roll == {"rule_date": "2025-12-11", "old": "ESZ2025", "new": "ESH2026", "rule_version": "roll-v1",
-                    "volume_cross": "2025-12-15", "cross_minus_rule_days": 2, "days_compared": len(days)}
-    assert "| 2025-12-11 | ESZ2025 | ESH2026 | roll-v1 | 2025-12-15 | 2 |" in env.report.read_text(encoding="utf-8")
+    assert roll == {"rule_date": "2025-12-15", "old": "ESZ2025", "new": "ESH2026", "rule_version": "roll-v2",
+                    "volume_cross": "2025-12-16", "cross_minus_rule_days": 1, "days_compared": len(days)}
+    assert "| 2025-12-15 | ESZ2025 | ESH2026 | roll-v2 | 2025-12-16 | 1 |" in env.report.read_text(encoding="utf-8")
 
 
 # ---------------------------------------------------------------- 11.4 / 11.5 预热与窗口

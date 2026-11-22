@@ -13,7 +13,8 @@ from .ingest import HOLDOUT_NOT_SET, ingest_files, new_run_id
 
 
 def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | None = None, kind: str = "ingest",
-               through: date | None = None, write_report: bool = True, report_path: Path | None = None) -> dict:
+               through: date | None = None, write_report: bool = True, report_path: Path | None = None,
+               rebuild: bool = False) -> dict:
     run_id = run_id or new_run_id("ing")
     cutoff = through or settings.dev_visible_through
     started = int(time.time())
@@ -21,13 +22,21 @@ def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | Non
                 (run_id, kind, started))
     con.commit()
     summary, touched = ingest_files(settings, con, run_id, cutoff)
+    if rebuild:
+        # 换月规则等配置变化后：清空全部派生结果和交易日状态，从原始 K 线重算。原始 K 线不动。
+        derive.clear_derived(con)
+        for t in ("trading_days", "rth_days", "reference_levels"):
+            con.execute(f"DELETE FROM {t}")
+        con.execute("DELETE FROM data_anomalies WHERE category IN ('UNEXPECTED_GAP','THIN_BAR','WRONG_CONTRACT')")
+        con.commit()
+        touched = derive.all_raw_keys(con)
     affected = derive.rebuild(con, settings, touched)
     days.refresh(con, settings, affected)
     days.refresh_quality(con)
     summary = {"ok": True, "run_id": run_id, "data_root": str(settings.data_root),
                "dev_visible_through": cutoff.isoformat() if cutoff else None,
                "flags": [] if cutoff else [HOLDOUT_NOT_SET], **summary,
-               "trading_days_refreshed": len(affected), "seconds": None}
+               "rebuilt": rebuild, "trading_days_refreshed": len(affected), "seconds": None}
     if write_report:
         from . import report
         path = report_path or settings.project_root / "reports" / "data_availability.md"

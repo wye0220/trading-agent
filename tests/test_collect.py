@@ -71,11 +71,11 @@ def test_only_closed_bars_saved(env):
 
 
 def test_uses_active_contract_after_roll(env):
-    roll = date(2025, 12, 11)
+    roll = date(2025, 12, 15)
     ad = H.FakeAdapter(slots(roll, 2))
     r = collect(env, ad, H.et(roll, 9, 45))
     assert ad.calls[0][0] == "ESH2026" and r["contract_id"] == "ESH2026"
-    assert csv_path(env.settings, "ES", "ESH2026", "2025-12-11").is_file()
+    assert csv_path(env.settings, "ES", "ESH2026", "2025-12-15").is_file()
 
 
 def test_unexpected_contract_writes_nothing(env):

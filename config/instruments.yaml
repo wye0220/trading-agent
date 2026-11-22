@@ -1,13 +1,20 @@
 # 合约规格。价格内部用整数 tick。换月规则版本化：改规则要换版本号。
 roll_rules:
   roll-v1:
-    # 到期日（合约月第三个星期五）之前第 8 个日历日所在交易日起，切到下一季月。实验预设，待验证。
+    # 已停用，保留定义以便解释旧快照。到期日（合约月第三个星期五）之前第 8 个日历日（星期四）起换月。
+    # 真实数据显示它比成交量交叉日早 1–2 个交易日。
     kind: days_before_expiry
     days_before_expiry: 8
     expiry: third_friday
+  roll-v2:
+    # 到期日之前第 6 个日历日起换月。那天是星期六，所以实际从紧接着的星期一（到期周的周一）交易日开始，
+    # 含周日晚上开始的夜盘。2026-11-22 由用户确定，依据是 2022 年以来的成交量交叉日。
+    kind: days_before_expiry
+    days_before_expiry: 6
+    expiry: third_friday
 
 instruments:
-  ES:  {point_value_usd: 50, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
-  NQ:  {point_value_usd: 20, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
-  MES: {point_value_usd: 5,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
-  MNQ: {point_value_usd: 2,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
+  ES:  {point_value_usd: 50, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
+  NQ:  {point_value_usd: 20, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
+  MES: {point_value_usd: 5,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
+  MNQ: {point_value_usd: 2,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}

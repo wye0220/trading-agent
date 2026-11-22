@@ -19,13 +19,25 @@ def test_instrument_specs(env):
         env.settings.instrument("CL")
 
 
-def test_roll_v1_dates_2025(env):
-    rule = env.settings.roll_rules["roll-v1"]
-    assert [contracts.roll_date(c, rule) for c in ("ESH2025", "ESM2025", "ESU2025", "ESZ2025")] == [
-        date(2025, 3, 13), date(2025, 6, 12), date(2025, 9, 11), date(2025, 12, 11)]
+def test_roll_v2_dates_2025(env):
     es = env.settings.instrument("ES")
-    assert contracts.active_contract(es, date(2025, 3, 12), env.settings.roll_rules) == "ESH2025"
-    assert contracts.active_contract(es, date(2025, 3, 13), env.settings.roll_rules) == "ESM2025"
+    assert all(env.settings.instrument(r).roll_rule_version == "roll-v2" for r in ("ES", "NQ", "MES", "MNQ"))
+    rule = env.settings.roll_rules["roll-v2"]
+    # 到期日前第 6 个日历日是星期六，实际从紧接着的星期一交易日起换月
+    assert [contracts.roll_date(c, rule) for c in ("ESH2025", "ESM2025", "ESU2025", "ESZ2025")] == [
+        date(2025, 3, 15), date(2025, 6, 14), date(2025, 9, 13), date(2025, 12, 13)]
+    active = lambda d: contracts.active_contract(es, d, env.settings.roll_rules)   # noqa: E731
+    assert active(date(2025, 3, 14)) == "ESH2025" and active(date(2025, 3, 17)) == "ESM2025"
+    assert active(date(2025, 6, 13)) == "ESM2025" and active(date(2025, 6, 16)) == "ESU2025"
+    assert active(date(2025, 9, 12)) == "ESU2025" and active(date(2025, 9, 15)) == "ESZ2025"
+    assert active(date(2025, 12, 12)) == "ESZ2025" and active(date(2025, 12, 15)) == "ESH2026"
+    assert [(d.isoformat(), o, n) for d, o, n in contracts.roll_schedule(
+        es, date(2025, 12, 1), date(2025, 12, 31), env.settings.roll_rules)] == [("2025-12-13", "ESZ2025", "ESH2026")]
+
+
+def test_roll_v1_still_defined(env):
+    rule = env.settings.roll_rules["roll-v1"]
+    assert contracts.roll_date("ESH2025", rule) == date(2025, 3, 13)
 
 
 def test_contract_year_resolution():

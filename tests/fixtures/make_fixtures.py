@@ -26,8 +26,8 @@ def main():
     s = H.et(date(2025, 11, 20), 9, 30)
     H.write_csv(HERE / "fixture_bad_rows.csv", [
         H.bar(s, 5000), H.bar(s + 300, 5000, high=4999), H.bar(s + 600, 5000.1), H.bar(s + 900, 5000)])
-    # 换月错误：roll-v1 指定 2025-12-11 起为 ESH2026，这里只给旧合约
-    H.write_csv(HERE / "fixture_wrong_contract.csv", H.rth_bars(date(2025, 12, 11), contract="ESZ2025"))
+    # 换月错误：roll-v2 指定 2025-12-15 起为 ESH2026，这里只给旧合约
+    H.write_csv(HERE / "fixture_wrong_contract.csv", H.rth_bars(date(2025, 12, 15), contract="ESZ2025"))
     # 夏令时转换：切换前后的交易日
     rows = []
     for d in (date(2025, 3, 7), date(2025, 3, 10)):
