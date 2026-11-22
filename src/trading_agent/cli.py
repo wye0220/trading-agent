@@ -18,7 +18,7 @@ COMMANDS = {
 IMPLEMENTED = {"ingest", "collect", "scan"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
-    "collect": "从 Webull 只读采集已收线的 K 线，追加到 CSV 并入库",
+    "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
     "scan": "阶段 1：只做数据校验和快照封存（WAIT 或 DATA_ERROR）",
     "plan": "人工交易前登记与预检", "watch": "盘中只读纪律提醒", "replay": "回放与基线",
     "review": "日复盘", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
@@ -111,6 +111,8 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None) -> int:
                         f"未收线跳过 {s['skipped_unclosed']}，已有跳过 {s['skipped_existing']}。")
             else:
                 text = f"采集失败：{s['message']}。没有写入任何数据。"
+                if s["error"] == "MARKET_DATA_NOT_SUBSCRIBED":
+                    text += "\n说明：Webull 账号没有美国期货行情，实时来源暂缓接入（见 docs/data-contract.md）。"
             _emit(s, args.json, text)
             return 0 if s["ok"] else 1
 

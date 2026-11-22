@@ -1,4 +1,4 @@
-# Webull 只读采集（collect）。
+# 只读采集（collect）。目前唯一的适配器是 Webull，该账号没有美国期货行情，所以暂不可用。
 timeframe: 5m
 # 每次回看多少个交易日，用于补缺。
 lookback_trading_days: 2

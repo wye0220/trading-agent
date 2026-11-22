@@ -65,6 +65,8 @@
 
 ### Webull 来源
 
+> **状态（2026-11-22）：不可用，暂缓。** Webull 账号没有美国期货行情，取不到 ES 的 K 线。用户决定先不接实时来源，阶段 2–5 只用历史数据；Webull 适配器保留，等做到盘中 `scan`、`watch` 时再定来源。下面的采集规则与来源无关，换适配器后照样适用。
+
 `collect` 用 Webull OpenAPI SDK 的行情接口 `futures_market_data.get_futures_history_bars`，类别 `US_FUTURES`，周期 `M5`，一次最多 1200 根。
 
 **核实状态**（2026-11-22 用真实凭证试过；因为账号没有期货行情订阅，下表除第一行外仍未核实）：

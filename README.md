@@ -39,7 +39,7 @@ uv run python -m trading_agent ingest --rebuild               # 改了换月规�
 uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z
 uv run python -m trading_agent scan --scope pa_brooks:ES:RTH:5m --json      # 缺省 as-of 为当前时刻
 
-# 从 Webull 只读采集已收线的 5 分钟线，追加到 CSV 并入库
+# 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect
 ```
 
@@ -47,7 +47,11 @@ uv run python -m trading_agent collect
 
 其余子命令（`plan`、`watch`、`replay`、`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
 
-## Webull 采集
+## 实时采集（暂不可用）
+
+**现状（2026-11-22）：Webull 账号没有美国期货行情，`collect` 取不到 ES 的 K 线，实时来源暂缓接入。** 阶段 2–5 只用历史数据，不受影响。等做到盘中 `scan`、`watch` 时再定来源。
+
+采集逻辑（只存已收线、只追加、补缺、修订、失败不写数据）与来源无关，换来源时只需要换适配器。下面是 Webull 适配器的用法，留作参考。
 
 `collect` 只调用行情接口，代码里没有任何交易接口。
 
@@ -65,7 +69,7 @@ uv run python -m trading_agent collect
    uv run pytest -m webull_live -s
    ```
 
-   这一步还没有做过。期货代码格式、时间戳口径等几项是按 SDK 文档假定的，见 `docs/data-contract.md` 的"Webull 来源"。
+   2026-11-22 实测结果是 `MARKET_DATA_NOT_SUBSCRIBED`。期货代码格式、时间戳口径等几项仍是按 SDK 文档假定的，见 `docs/data-contract.md` 的"Webull 来源"。
 
 3. 手工运行 `uv run python -m trading_agent collect`，检查 `~/trading-agent-data/webull/ES/` 下的 CSV。
 
