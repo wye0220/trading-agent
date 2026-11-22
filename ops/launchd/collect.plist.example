@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  样例，未安装。每个 5 分钟整点触发 run-collect.sh，脚本内再等 10 秒后取数。
+  安装前把下面两处 /Users/wenye/trading-agent 换成你的项目路径。启用方法见 README.md。
+  周末和每日维护时段也会触发：那时没有新的已收线 K 线，collect 不写任何行。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.trading-agent.collect</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/wenye/trading-agent/ops/launchd/run-collect.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/wenye/trading-agent</string>
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Minute</key><integer>10</integer></dict>
+        <dict><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Minute</key><integer>25</integer></dict>
+        <dict><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Minute</key><integer>35</integer></dict>
+        <dict><key>Minute</key><integer>40</integer></dict>
+        <dict><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Minute</key><integer>55</integer></dict>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>COLLECT_WAIT_SECONDS</key>
+        <string>10</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>/tmp/trading-agent-collect.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/trading-agent-collect.err</string>
+    <key>RunAtLoad</key>
+    <false/>
+</dict>
+</plist>

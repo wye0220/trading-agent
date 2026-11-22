@@ -1,0 +1,19 @@
+# 路径与数据来源配置。
+# 数据根目录必须在项目之外。可用环境变量 TRADING_AGENT_DATA_ROOT 覆盖。
+data_root: ~/trading-agent-data
+
+# 发布库留在项目内（只有 active 指针和审计事件）。
+release_db: releases/release-state.sqlite
+
+# 保留集（含历史盲测胶囊）：只登记路径，必须在项目之外。非评测身份的代码不得读取。
+holdout_root: ~/trading-holdout
+
+# 没有到达时刻的来源（Databento 历史文件）：available_at = 收盘 + 这个延迟。实验预设。
+available_at_delay_seconds: 5
+
+# 同一交易日多个来源都有数据时，按此顺序选一个，整日使用。
+source_priority: [databento, webull]
+
+# 可选。设了以后，交易日晚于它的 K 线不进运行库。留空则全部导入，
+# 报告标 HOLDOUT_BOUNDARY_NOT_SET。格式 YYYY-MM-DD。
+dev_visible_through:

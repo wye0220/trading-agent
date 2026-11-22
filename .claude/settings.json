@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(//Users/wenye/trading-holdout/**)",
+      "Edit(/releases/active*)",
+      "Edit(/releases/release-state.sqlite*)",
+      "Read(./.env)",
+      "Read(./secrets/**)"
+    ]
+  }
+}

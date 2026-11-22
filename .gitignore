@@ -1,0 +1,20 @@
+# 真实行情、数据库、凭证不进 Git
+data/*
+!data/README.md
+*.sqlite
+*.sqlite-*
+*.sqlite3
+.env
+.env.*
+secrets/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.DS_Store
+# Webull SDK 的本地日志
+webull_*.log
+*.egg-info/
+# 生成的报告
+reports/*
+!reports/.gitkeep

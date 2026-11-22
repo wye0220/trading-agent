@@ -1,0 +1,13 @@
+# 合约规格。价格内部用整数 tick。换月规则版本化：改规则要换版本号。
+roll_rules:
+  roll-v1:
+    # 到期日（合约月第三个星期五）之前第 8 个日历日所在交易日起，切到下一季月。实验预设，待验证。
+    kind: days_before_expiry
+    days_before_expiry: 8
+    expiry: third_friday
+
+instruments:
+  ES:  {point_value_usd: 50, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
+  NQ:  {point_value_usd: 20, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
+  MES: {point_value_usd: 5,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}
+  MNQ: {point_value_usd: 2,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v1, exchange: CME}

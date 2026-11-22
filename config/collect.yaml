@@ -1,0 +1,10 @@
+# Webull 只读采集（collect）。
+timeframe: 5m
+# 每次回看多少个交易日，用于补缺。
+lookback_trading_days: 2
+# 调度在收线后等多少秒再取数（供 launchd 样例和文档使用）。
+wait_after_close_seconds: 10
+# 是否包含夜盘（ONH/ONL 和 1 小时线需要）。
+include_eth: true
+# 单次请求的最大根数（Webull 上限 1200）。
+max_bars_per_request: 1200
