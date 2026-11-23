@@ -2,7 +2,7 @@
 # 发一条 Telegram 消息。用法：notify-telegram.sh "消息正文"
 # 凭证在项目之外，按顺序找第一个同时有 TELEGRAM_BOT_TOKEN 和 TELEGRAM_CHAT_ID 的文件：
 #   $TRADING_AGENT_TELEGRAM_ENV、~/trading-agent-data/secrets/telegram.env、~/trading-desk/.env
-# （2026-11-23 用户同意复用 trading-desk 的机器人；这里只解析这两个键，不复制、不 source 整个文件。）
+# （2026-11-23 用户同意复用 trading-desk 的机器人；这里只解析这两个键，不复制，也不执行整个文件。）
 # 只打印 HTTP 状态码，不打印 token。发不出去不算调用方失败：返回 0，并退回到本机通知。
 msg="$1"
 get() {   # get <文件> <键>
