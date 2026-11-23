@@ -95,7 +95,7 @@ def test_nothing_after_dev_visible_cutoff(real):
                        (cut.isoformat(),)).fetchone()[0] == 0
     days, bars, missing = con.execute(
         "SELECT COUNT(DISTINCT trading_day), SUM(bar_count), SUM(content_sha256 IS NULL) FROM withheld_coverage"
-        " WHERE instrument_root='ES'").fetchone()
+        " WHERE instrument_root='ES' AND source='databento'").fetchone()       # 每日采集的 Webull 数据另算
     assert (days, bars, missing) == (420, 802180, 0)
     scope = parse_scope("pa_brooks:ES:RTH:5m", st)
     r = run_scan(st, con, scope, H.et(date(2026, 9, 3), 11, 0), record_event=False)
@@ -106,7 +106,9 @@ def test_registered_splits(real):
     from trading_agent.research import config as RC, splits as SP
     st, con = real
     reg = SP.build(st, con, "ES", RC.load_research(st.project_root))
-    assert reg["summary"] == {"development_days": 1080, "forward_validation_days": 251, "capsules": 20,
-                              "capsule_valid_days": 400, "remainder_valid_days": 14, "candidates_supported": 2}
+    sm = reg["summary"]
+    assert (sm["development_days"], sm["forward_validation_days"]) == (1080, 251)
+    assert sm["capsules"] >= 20 and sm["capsule_valid_days"] == 20 * sm["capsules"]      # 每日采集会让余量慢慢长成新胶囊
+    assert sm["candidates_supported"] == sm["capsules"] // 7
     caps = [s for s in reg["segments"] if s["kind"] == "CAPSULE"]
     assert caps[0]["start_day"] == "2025-01-02" and all(s["status"] == "SEALED" and s["valid_days"] == 20 for s in caps)

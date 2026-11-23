@@ -292,7 +292,7 @@ def render_power(scope: str, p: dict, cfg) -> str:
     L += ["> 这里的扰动是为规划而预登记的合成改动，只用来估计配对日差的波动。它们不是候选，结果也不是任何改动能盈利的证据。", ""]
     L += ["## 结论", ""]
     names = {"PRUNING_DEFENSIVE": "Track A（剪枝防守）", "ALPHA_EXPANSION": "Track B（结构扩展）"}
-    L += _table(["轨道", "规划效应（R／日）", "40 日整体通过率", "短窗正式资格", "原因"], [
+    L += _table(["轨道", "规划效应（R／日）", f"{p['confirm_days']} 日整体通过率", "短窗正式资格", "原因"], [
         [names[t], _num(v["planning_effect"]), _pct(v["joint_pass_rate"]), f"`{v['eligibility']}`",
          "；".join(v["reasons"]) or "—"] for t, v in p["tracks"].items()])
     av = p["availability"]
