@@ -9,7 +9,8 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | 1 数据合同与项目骨架 | 完成 | `docs/data-contract.md` |
 | 2 策略插件接口与 PA v1.0 | 完成（策略还没有接进 `scan`，也没有在真实数据上运行过） | `docs/strategy-spec.md` |
 | 3 引擎核心 | 完成（成交模型、风控、逐步运行器；还没有命令行入口，也没有在真实数据上运行过） | `docs/engine.md` |
-| 4 Scanner、纸面账本与人工预检及以后 | 未开始 | — |
+| 4 scan、plan、watch 与人工成交导入 | 完成（没有实时行情和真实券商接口，盘中功能如实报告没有数据） | `docs/scan-plan-watch.md` |
+| 5 回放与基线及以后 | 未开始 | — |
 
 ## 环境
 
@@ -42,9 +43,22 @@ uv run python -m trading_agent ingest --json
 uv run python -m trading_agent ingest --through 2025-12-31    # 晚于该交易日的 K 线不进运行库
 uv run python -m trading_agent ingest --rebuild               # 改了换月规则等配置后：从原始 K 线重算派生数据和交易日状态
 
-# 数据校验 + 封存快照。阶段 1 只会给出 WAIT 或 DATA_ERROR，不产生信号
-uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z
-uv run python -m trading_agent scan --scope pa_brooks:ES:RTH:5m --json      # 缺省 as-of 为当前时刻
+# 数据校验后运行策略和纸面账本，输出中文短报
+uv run python -m trading_agent scan                                         # 盘中
+uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z            # 历史。真实数据未设截止日时只做数据校验
+uv run python -m trading_agent scan --scope pa_brooks:ES:RTH:5m --json
+
+# 人工交易计划：登记并预检（只给结论，不下单）；激活才预留预算
+uv run python -m trading_agent plan ES L 5000 4995 5010 1 PA Spike H1 --account U123
+uv run python -m trading_agent plan --activate plan_xxxxxxxxxxxx
+uv run python -m trading_agent plan --list
+
+# 盘中只读纪律提醒：读 ~/trading-agent-data/broker/<账户>/snapshot.json
+uv run python -m trading_agent watch --once --account U123
+uv run python -m trading_agent watch --account U123 --interval 300
+
+# 导入人工成交和订单事件
+uv run python -m trading_agent ingest --trades trades.csv --order-events orders.csv
 
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect
@@ -52,7 +66,7 @@ uv run python -m trading_agent collect
 
 `--scope` 的格式是 `strategy_family:instrument_root:session_type:timeframe`，缺省 `pa_brooks:ES:RTH:5m`。
 
-其余子命令（`plan`、`watch`、`replay`、`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
+其余子命令（`replay`、`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
 
 ## 实时采集（暂不可用）
 

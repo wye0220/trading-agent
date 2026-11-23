@@ -11,16 +11,16 @@ from .config import DEFAULT_SCOPE, ConfigError, load_settings, parse_scope
 
 # 子命令 -> 负责实现它的阶段。阶段 1 实现 ingest、collect 和最小 scan。
 COMMANDS = {
-    "ingest": 1, "collect": 1, "scan": 1,
+    "ingest": 1, "collect": 1, "scan": 4,
     "plan": 4, "watch": 4, "replay": 5, "review": "6A", "evolve": "6B",
     "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
-    "scan": "阶段 1：只做数据校验和快照封存（WAIT 或 DATA_ERROR）",
-    "plan": "人工交易前登记与预检", "watch": "盘中只读纪律提醒", "replay": "回放与基线",
+    "scan": "数据校验后运行策略和纸面账本，输出 JSON 和中文短报",
+    "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒", "replay": "回放与基线",
     "review": "日复盘", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
@@ -40,10 +40,25 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--through", metavar="YYYY-MM-DD",
                             help="开发可见截止日：晚于它的 K 线不进运行库（覆盖 config/paths.yaml 的 dev_visible_through）")
             sp.add_argument("--no-report", action="store_true", help="不生成数据可得性报告")
+            sp.add_argument("--trades", metavar="CSV", help="导入人工成交文件（不扫描行情目录）")
+            sp.add_argument("--order-events", metavar="CSV", help="导入订单生命周期事件文件（建议与 --trades 一起给）")
             sp.add_argument("--rebuild", action="store_true",
                             help="清空派生数据和交易日状态后从原始 K 线重算（改了换月规则等配置后使用）")
         if name == "scan":
-            sp.add_argument("--as-of", metavar="ISO8601", help="决策时点（UTC，或带时区）。缺省为当前时刻")
+            sp.add_argument("--as-of", metavar="ISO8601", help="历史扫描的决策时点（UTC，或带时区）。缺省为盘中扫描")
+            sp.add_argument("--allow-real-data", action="store_true",
+                            help="历史扫描时允许在真实数据上运行策略（还需要已设置开发可见截止日）")
+        if name == "plan":
+            sp.add_argument("tokens", nargs="*", metavar="字段",
+                            help="快捷语法：根代码 方向 入场 止损 目标 手数 理由…（止损、目标可写 -）")
+            sp.add_argument("--account", help="账户标识（缺省取 config/manual.yaml 的 default_account_id）")
+            sp.add_argument("--activate", metavar="PLAN_ID", help="激活一份已预检的计划（预留风险预算）")
+            sp.add_argument("--cancel", metavar="PLAN_ID", help="取消一份计划")
+            sp.add_argument("--list", action="store_true", help="列出计划")
+        if name == "watch":
+            sp.add_argument("--account", help="账户标识")
+            sp.add_argument("--once", action="store_true", help="只评估一次就退出")
+            sp.add_argument("--interval", type=int, metavar="秒", help="轮询间隔（缺省取 config/watch.yaml，常用 60 或 300）")
         if name not in IMPLEMENTED:
             sp.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     return p
@@ -56,7 +71,7 @@ def _emit(obj: dict, as_json: bool, text: str | None = None):
         print(text)
 
 
-def main(argv: list[str] | None = None, *, settings=None, adapter=None) -> int:
+def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     if not args.command:
@@ -78,6 +93,29 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None) -> int:
 
     con = db.open_runtime(settings)
     try:
+        if args.command == "ingest" and (args.trades or args.order_events):
+            from .engine.config import load_risk
+            from .manual import trades as trades_mod
+            from .manual.config import load_manual
+            out = {"ok": True, "results": []}
+            try:
+                if args.order_events:                 # 先导入订单事件：成交的退出类型要用到它
+                    out["results"].append(trades_mod.import_order_events(settings, con, args.order_events))
+                if args.trades:
+                    out["results"].append(trades_mod.import_trades(
+                        settings, con, args.trades, risk_cfg=load_risk(settings.project_root),
+                        manual_cfg=load_manual(settings.project_root)))
+            except (trades_mod.ImportError_, OSError) as e:
+                _emit({"ok": False, "status": "ERROR", "error": "REJECTED", "message": str(e)}, args.json,
+                      f"拒收：{e}")
+                return 1
+            text = "\n".join(
+                f"{'订单事件' if r['kind'] == 'order_events' else '成交'}：导入 {r['imported']}，跳过 {r['skipped']}，"
+                + (f"隔离 {r['quarantined']}，" if "quarantined" in r else "") + f"无法解析 {r['bad_rows']}"
+                + (f"（{r['first_error']}）" if r.get("first_error") else "") for r in out["results"])
+            _emit(out, args.json, text)
+            return 0
+
         if args.command == "ingest":
             from .pipeline import run_ingest
             try:
@@ -117,19 +155,131 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None) -> int:
             return 0 if s["ok"] else 1
 
         if args.command == "scan":
-            from .scan import run_scan
+            from . import scanner
+            from .strategies.registry import default_registry
             try:
                 as_of = sessions.parse_utc(args.as_of) if args.as_of else None
             except ValueError:
                 _emit({"status": "ERROR", "error": "CONFIG", "message": f"--as-of 不是合法时刻：{args.as_of}"},
                       args.json, f"错误：--as-of 不是合法时刻：{args.as_of}")
                 return 2
-            r = run_scan(settings, con, scope, as_of)
+            strategy = (registry or default_registry()).get(scope.strategy_family)
+            if as_of is None:
+                r = scanner.live_scan(settings, con, scope, strategy)
+            else:
+                r = scanner.historical_scan(settings, con, scope, strategy, as_of,
+                                            allow_real_data=args.allow_real_data)
             _emit(r, args.json, r["report"])
             return 0
+
+        if args.command == "plan":
+            return _plan(args, settings, con, scope, registry)
+
+        if args.command == "watch":
+            return _watch(args, settings, con, scope, registry, adapter)
     finally:
         con.close()
     return 2
+
+
+def _account(args, manual_cfg) -> str | None:
+    return args.account or manual_cfg.default_account_id
+
+
+def _snapshot_time(con, account_id: str) -> int | None:
+    r = con.execute("SELECT MAX(fetched_at_utc) FROM broker_snapshots WHERE account_id=?", (account_id,)).fetchone()
+    return r[0]
+
+
+def _plan(args, settings, con, scope, registry) -> int:
+    import time
+
+    from .engine.config import load_risk
+    from .manual import plans
+    from .manual.config import load_manual
+    from .strategies.registry import default_registry
+
+    manual_cfg, risk_cfg = load_manual(settings.project_root), load_risk(settings.project_root)
+    strategy = (registry or default_registry()).get(scope.strategy_family)
+    now = int(time.time())
+    tick = settings.instrument(scope.instrument_root).tick_size
+    px = lambda t: "无" if t is None else str(t * tick)       # noqa: E731
+    try:
+        if args.list:
+            plans.expire_due(con, now)
+            rows = plans.list_plans(con, args.account)
+            text = "\n".join(f"{r['plan_id']}  {r['status']:<16} {r['contract_id']} {r['side']} {r['quantity']} 手  "
+                             f"入场 {px(r['entry_ticks'])} 止损 {px(r['stop_ticks'])} 目标 {px(r['target_ticks'])}  "
+                             f"{r['conclusion'] or ''}" for r in rows) or "没有计划。"
+            _emit({"plans": rows}, args.json, text)
+            return 0
+        if args.cancel:
+            r = plans.cancel(con, args.cancel, now)
+            _emit(r, args.json, f"{r['plan_id']} 已取消。")
+            return 0
+        if args.activate:
+            p = plans.get(con, args.activate)
+            r = plans.activate(settings, con, args.activate, scope=scope, strategy=strategy, risk_cfg=risk_cfg,
+                               manual_cfg=manual_cfg, now_utc=now,
+                               snapshot_fetched_at=_snapshot_time(con, p["account_id"]))
+            text = (f"{r['plan_id']} 已激活，已预留风险预算。" if r["status"] == "ACTIVE" else
+                    f"{r['plan_id']} 没有激活，保持 DRAFT：{r['check']['risk_reason'] or r['check']['conclusion']}。")
+            _emit(r, args.json, text + "\n" + r["check"]["summary"])
+            return 0 if r["status"] == "ACTIVE" else 1
+        account = _account(args, manual_cfg)
+        if not account:
+            raise plans.PlanError("没有账户标识：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
+        inp = plans.parse_quick(args.tokens, settings, sessions.trading_day_at(now))
+        if inp.instrument_root != scope.instrument_root:
+            scope = parse_scope(f"{scope.strategy_family}:{inp.instrument_root}:{scope.session_type}:{scope.timeframe}",
+                                settings)
+        r = plans.create(settings, con, account_id=account, scope=scope, strategy=strategy, inp=inp, risk_cfg=risk_cfg,
+                         manual_cfg=manual_cfg, now_utc=now, snapshot_fetched_at=_snapshot_time(con, account))
+        text = (f"计划 {r['plan_id']}（DRAFT，未预留预算）：{inp.instrument_root} 解析为实际合约 {r['contract_id']}。\n"
+                f"{r['check']['summary']}\n激活：python -m trading_agent plan --activate {r['plan_id']}")
+        _emit(r, args.json, text)
+        return 0
+    except (plans.PlanError, ConfigError) as e:
+        _emit({"status": "ERROR", "error": "PLAN", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+
+
+def _watch(args, settings, con, scope, registry, adapter) -> int:
+    from .engine.config import load_risk
+    from .manual import watch as watch_mod
+    from .manual.broker import FileSnapshotAdapter
+    from .manual.config import load_manual
+    from .strategies.registry import default_registry
+
+    manual_cfg, risk_cfg = load_manual(settings.project_root), load_risk(settings.project_root)
+    account = _account(args, manual_cfg)
+    if not account:
+        _emit({"status": "ERROR", "error": "CONFIG", "message": "没有账户标识"}, args.json,
+              "错误：没有账户标识：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
+        return 2
+    try:
+        interval = watch_mod.resolve_interval(settings.watch, args.interval)
+    except ValueError as e:
+        _emit({"status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    strategy = (registry or default_registry()).get(scope.strategy_family)
+    adapter = adapter or FileSnapshotAdapter(settings)
+
+    def poll():
+        return watch_mod.poll_once(settings, con, adapter, account, scope=scope, strategy=strategy, risk_cfg=risk_cfg,
+                                   manual_cfg=manual_cfg, interval_seconds=interval)
+
+    def emit(r):
+        lines = [f"[watch] {r['as_of_utc']} 账户 {account} 间隔 {interval}s 状态 {r['status']}"
+                 + (f"（{r['message']}）" if r.get("message") else "")]
+        lines += [f"  [{a['level']}] {a['message']} 数据时点 {a['data_as_of_utc']}。" for a in r["alerts"]]
+        _emit(r, args.json, "\n".join(lines))
+
+    try:
+        watch_mod.run_loop(poll, interval, iterations=1 if args.once else None, emit=emit)
+    except KeyboardInterrupt:
+        pass
+    return 0
 
 
 if __name__ == "__main__":

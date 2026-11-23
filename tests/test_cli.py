@@ -22,7 +22,7 @@ def test_help_lists_all_subcommands(capsys):
         main(["--help"])
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert len(COMMANDS) == 14 and len(NOT_IMPL) == 11
+    assert len(COMMANDS) == 14 and len(NOT_IMPL) == 9
     for name in ("ingest", "collect", "scan", "plan", "watch", "replay", "review", "evolve", "evaluate", "shadow",
                  "release", "rollback", "freeze", "monitor"):
         assert f"\n    {name} " in out
@@ -84,27 +84,25 @@ def test_scan_wait_and_data_error(env, capsys):
     code, out = run(env, capsys, "scan", "--as-of", sessions.iso(H.et(D1, 10, 30, 5)), "--json")
     ok = json.loads(out)
     assert code == 0 and ok["signal_status"] == "WAIT" and ok["paper_action"] == "NONE"
-    assert ok["snapshot_id"].startswith("snap_") and ok["contract_id"] == "ESZ2025"
+    assert ok["snapshot_id"].startswith("snap_") and ok["contract_id"] == "ESZ2025" and ok["strategy_ran"] is True
     assert ok["latest_bar"]["bar_end_utc"] == sessions.iso(H.et(D1, 10, 30))
     assert ok["latest_bar"]["available_at_utc"] == sessions.iso(H.et(D1, 10, 30) + 5)
-    assert ok["version_tuple"]["strategy_family"] == "pa_brooks"
+    assert ok["version_tuple"]["strategy_family"] == "pa_brooks" and ok["version_tuple"]["engine_version"]
+    assert ok["decision_metadata"]["skip_reason"] == "FEATURE_UNAVAILABLE:atr14"      # 当日只有 12 根，ATR 还没预热
 
     code, out = run(env, capsys, "scan", "--as-of", sessions.iso(H.et(D1, 12, 0)), "--json")
     bad = json.loads(out)
-    assert code == 0 and bad["signal_status"] == "DATA_ERROR" and bad["new_entries_blocked"] is True
+    assert code == 0 and bad["signal_status"] == "DATA_ERROR"
     assert bad["problems"] == [{"category": "UNEXPECTED_GAP", "start_utc": sessions.iso(H.et(D1, 11, 0)),
                                 "end_utc": sessions.iso(H.et(D1, 11, 5)), "detail": "缺 1 根 K 线"}]
 
     code, text = run(env, capsys, "scan", "--as-of", sessions.iso(H.et(D1, 12, 0)))
-    assert "[DATA_ERROR]" in text and "事实：" in text and "决策：" in text and "数据：快照 snap_" in text
+    assert "[DATA_ERROR]" in text and "事实：" in text and "决策：DATA_ERROR" in text and "数据：快照 snap_" in text
     assert "[2025-11-25 12:00:00 ET] [pa_brooks:ES:RTH:5m] [ESZ2025]" in text and "不构成投资建议" in text
 
-    ev = env.con.execute("SELECT signal_status, strategy_family, paper_action, strategy_state_json, run_mode"
-                         " FROM scan_events ORDER BY as_of_utc").fetchall()
-    assert [tuple(e) for e in ev] == [("WAIT", "pa_brooks", "NONE", "{}", "fixture"),
-                                      ("DATA_ERROR", "pa_brooks", "NONE", "{}", "fixture")]
     assert env.con.execute("SELECT COUNT(*) FROM paper_orders").fetchone()[0] == 0
     assert env.con.execute("SELECT COUNT(*) FROM paper_fills").fetchone()[0] == 0
+    assert {r[0] for r in env.con.execute("SELECT DISTINCT run_mode FROM scan_events")} == {"fixture"}
     assert env.settings.release_db.read_bytes() == rel_before               # 不碰发布库
     from trading_agent import db
     rel = db.connect(env.settings.release_db, readonly=True)

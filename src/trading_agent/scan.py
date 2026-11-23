@@ -77,9 +77,10 @@ def _set_block(con, scope: Scope, risk_domain: str, blocked: bool, reason: str |
 
 
 def run_scan(settings: Settings, con: sqlite3.Connection, scope: Scope, as_of_utc: int | None = None,
-             run_id: str | None = None) -> dict:
+             run_id: str | None = None, *, now_utc: int | None = None, record_event: bool = True) -> dict:
+    """数据校验与快照封存。as_of_utc 给出时是历史扫描；否则是盘中（now_utc 仅供测试注入当前时刻）。"""
     explicit = as_of_utc is not None
-    as_of = as_of_utc if explicit else int(time.time())
+    as_of = as_of_utc if explicit else (int(time.time()) if now_utc is None else now_utc)
     run_id = run_id or f"scan_{as_of}"
     root = scope.instrument_root
     inst = settings.instrument(root)
@@ -154,7 +155,8 @@ def run_scan(settings: Settings, con: sqlite3.Connection, scope: Scope, as_of_ut
         }
         event_id = "scan_" + hashlib.sha256(
             f"{scope}|{as_of}|{snap['snapshot_id']}|{run_mode}".encode()).hexdigest()[:24]
-        con.execute(
+        # record_event=False：调用方（scanner）会经引擎写它自己的扫描记录，这里只做校验和快照
+        (con.execute if record_event else (lambda *a, **k: None))(
             "INSERT OR IGNORE INTO scan_events (event_id, scope, strategy_family, run_mode, risk_domain, run_id,"
             " as_of_utc, snapshot_id, contract_id, signal_status, risk_status, paper_action, version_tuple_json,"
             " strategy_state_json, decision_json, created_at_utc) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",

@@ -98,6 +98,21 @@
 - **引擎版本**：成交规则和事件顺序的版本号，现在是 `fill-v1.0`。
 - **`FROZEN_CONTRACT`**：阶段 1–3 验收后冻结的表结构、状态枚举和引擎公共接口。之后的改动要走编号 migration 并重跑全部既有测试。
 
+## 人工轨（阶段 4）
+
+- **计划（plan）**：下单之前登记的交易打算。状态 `DRAFT`、`ACTIVE`、`PARTIALLY_FILLED`、`FILLED`、`CANCELLED`、`EXPIRED`。激活才预留风险预算。
+- **预检结论**：`ALIGNED`、`DEVIATES`、`BLOCKED_BY_RISK`。无法确认与策略一致时给 `DEVIATES`。
+- **`strategy_alignment`**：计划（或交易）与当时的正式策略是否一致：`ALIGNED`、`DEVIATES`、`UNKNOWN`。
+- **`plan_adherence`**：真实动作与当时生效的个人计划是否一致：`COMPLIANT`、`VIOLATION`、`UNKNOWN`。与上一条独立。
+- **`plan_link_status`**：开仓成交与事前计划的关联：`LINKED`（可证明）、`UNKNOWN`（只有时间吻合，待核对）、`UNPLANNED`。
+- **隔离（quarantine）**：没有成交号且无法唯一去重的成交，不参与任何统计。
+- **纪律事件**：`UNPLANNED`、`COUNTERTREND_BEFORE_CONFIRMATION`、`RETRY_WITHOUT_NEW_SETUP`、`EARLY_EXIT`、`STOP_WIDENED`、`STOP_DELAYED`、`MISSING_EVIDENCE`。
+- **纪律提醒**：`watch` 的六条规则：`NAKED_POSITION`、`STOP_MOVED_AWAY`、`REENTRY_IN_COOLDOWN`、`UNPLANNED_ENTRY`、`COUNTERTREND_ADD`、`DAILY_LOSS_NEAR_LIMIT`。
+- **保护止损单**：与持仓同合约、方向相反、止损类型、数量不小于持仓的挂单。
+- **`plan_coverage`**：有事前已激活计划关联的开仓数 ÷ 全部开仓数。人工轨的第一指标。
+- **账户快照**：只读适配器取回的持仓、挂单和当日成交，带取数时刻。
+- **常驻纸面运行**：每个 scope 一个，`run_id` 为 `paper:<scope>`，盘中 `scan` 用它。
+
 ## 数据位置
 
 - **数据根目录（`data_root`）**：项目之外，默认 `~/trading-agent-data/`。存放原始行情（`databento/`、`webull/`）和运行库（`runtime/`）。

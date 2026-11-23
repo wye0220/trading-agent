@@ -229,7 +229,7 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | 运行库 | `<data_root>/runtime/trading_agent.sqlite` | 全部业务表 |
 | 发布库 | `releases/release-state.sqlite` | `active_pointers`（按四维 scope）和 `release_events`。阶段 1 只建表，不写 |
 
-两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。运行库目前有 `0001_initial`（阶段 1）和 `0002_engine`（阶段 3）。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
+两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。运行库目前有 `0001_initial`（阶段 1）、`0002_engine`（阶段 3）和 `0003_manual`（阶段 4）。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
 
 纸面、人工、影子和回放的记录用 `risk_domain`、`run_mode` 和 `run_id` 区分。
 
@@ -256,10 +256,14 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | `account_risk_days` | 真实账户按交易日的已实现亏损、预留、止损次数、是否停手 | 3（结构），4（使用） |
 | `account_risk_events` | 真实账户已完结交易的登记，按券商 ID 去重 | 3（结构），4（使用） |
 | `risk_reservations` | 人工计划的风险预留 | 3（结构），4（使用） |
-| `trader_plans` | 人工交易计划 | 4 |
-| `manual_trades`、`manual_order_events` | 人工成交与订单生命周期 | 4 |
+| `trader_plans` | 人工交易计划。阶段 4 加了 scope、`setup_id`、激活时刻、已成交手数、预检时的版本元组 | 4 |
+| `plan_events` | 计划状态变化的审计：前后状态、时刻、操作者 | 4 |
+| `manual_trades` | 人工成交。一行是一笔成交的开仓部分或平仓部分；阶段 4 加了去重键、开平、交易日、是否隔离、去重规则、关联建议与说明、平均入场价、已实现盈亏、退出类型、`plan_adherence`、`strategy_alignment` | 4 |
+| `manual_order_events` | 订单生命周期事件。阶段 4 加了合约、方向、订单类型、价格、数量 | 4 |
 | `broker_snapshots` | 券商只读快照 | 4 |
-| `discipline_alerts` | 纪律提醒 | 4 |
+| `discipline_alerts` | `watch` 的纪律提醒。阶段 4 加了交易日、持仓键、级别、文字、解除时刻 | 4 |
+| `discipline_events` | 纪律事件：类型、动作时点、关联的计划和成交、`plan_adherence`、`strategy_alignment`、证据 | 4 |
+| `watch_state` | `watch` 的状态：心跳、上一快照的持仓和止损、首次看到无止损的时刻 | 4 |
 | `trader_notes` | 交易员纠正 | 4 |
 | `sessions` | 交易 session 与 KPI | 4、6A |
 | `candidates`、`candidate_ledger` | 候选与台账 | 6A、6B |
