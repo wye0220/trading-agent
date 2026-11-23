@@ -54,8 +54,8 @@ def setup_metadata(con: sqlite3.Connection, run_id: str) -> dict[str, dict]:
 
 
 def load_trades(settings: Settings, con: sqlite3.Connection, scope: Scope, run_id: str, risk_cfg: RiskConfig,
-                meta: dict[str, dict] | None = None) -> list[dict]:
-    """一次运行的全部已完结交易，带事后度量：MAE／MFE、持仓时长、跳空超计划损失、每手计划风险。"""
+                meta: dict[str, dict] | None = None, trading_day: str | None = None) -> list[dict]:
+    """一次运行的已完结交易（可只取一个交易日），带事后度量：MAE／MFE、持仓时长、跳空超计划损失、每手计划风险。"""
     inst = settings.instrument(scope.instrument_root)
     tv = inst.tick_value_usd
     meta = meta or {}
@@ -64,7 +64,9 @@ def load_trades(settings: Settings, con: sqlite3.Connection, scope: Scope, run_i
         "SELECT t.*, p.stop_ticks AS final_stop_ticks, o.intent_json, o.signal_bar_end_utc FROM paper_trades t"
         " LEFT JOIN paper_positions p ON p.position_id = t.trade_id"
         " LEFT JOIN paper_orders o ON o.order_id = p.order_id"
-        " WHERE t.run_id=? ORDER BY t.entry_time_utc, t.exit_time_utc, t.trade_id", (run_id,)).fetchall()
+        " WHERE t.run_id=?" + (" AND t.trading_day=?" if trading_day else "")
+        + " ORDER BY t.entry_time_utc, t.exit_time_utc, t.trade_id",
+        (run_id, trading_day) if trading_day else (run_id,)).fetchall()
     for r in rows:
         d = 1 if r["side"] == "LONG" else -1
         day = con.execute("SELECT source FROM trading_days WHERE instrument_root=? AND trading_day=?",

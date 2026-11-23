@@ -136,6 +136,18 @@
 - **滑点压力**：每边再多 1 tick 滑点后的净结果。
 - **风险规模结果**：对固定 1 手的交易按账户预算重新定手数后的结果。账户限额未批准时不出数。
 
+## 日复盘（阶段 6A）
+
+- **session**：一个运行的一个交易日（`<run_id>:<交易日>`），或一个账户一个交易日的人工轨（`manual:<账户>:<交易日>`）。
+- **封存（`SEALED`）**：把 session 的当日指标固定下来。只有封存的 session 才能复盘。
+- **四类信息**：当时知道的事实、证据不足的判断、事后信息、改动假设。复盘里分开写。
+- **归因类别**：`DATA_ENGINE_ERROR`、`RULE_EXECUTION_DEVIATION`、`LOSS_BY_RULE`、`PROFIT_BY_RULE`、`OUT_OF_RULE_OBSERVATION`。盈利的违规仍是违规。
+- **观察（observation）**：带 scope、机制标签和证据的一条记录。只描述发生了什么。
+- **机制标签**：观察的固定分类，如 `EXPIRED_THEN_TRIGGERED`、`STOPPED_THEN_TARGET`、`TWO_STOPS_HALT`。完整列表见 `docs/daily-review.md`。
+- **事故草稿**：`DATA_ERROR`、引擎异常、重大成交歧义的立案，含检查点和原始事件。状态 `DRAFT`，确认后才进回归库。
+- **检查点**：事故前某一刻的策略状态、版本元组、水位、仓位和挂单，用于以后重放。
+- **Memory 候选**：由明确表达的偏好生成，状态 `PENDING_CONFIRMATION`。
+
 ## 数据位置
 
 - **数据根目录（`data_root`）**：项目之外，默认 `~/trading-agent-data/`。存放原始行情（`databento/`、`webull/`）和运行库（`runtime/`）。

@@ -16,7 +16,7 @@ COMMANDS = {
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -24,7 +24,7 @@ HELP = {
     "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒",
     "replay": "在一段日期上回放策略和纸面账本（与 scan 共用同一个引擎）",
     "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
-    "review": "日复盘", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
+    "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
 
@@ -80,6 +80,15 @@ def build_parser() -> argparse.ArgumentParser:
         if name in ("replay", "baseline"):
             sp.add_argument("--allow-real-data", action="store_true",
                             help="允许在真实数据上运行（还需要已设置开发可见截止日，且区间不晚于它）")
+        if name == "review":
+            sp.add_argument("--day", metavar="YYYY-MM-DD", help="复盘这一个交易日")
+            sp.add_argument("--from", dest="start", metavar="YYYY-MM-DD", help="区间起始交易日")
+            sp.add_argument("--to", dest="end", metavar="YYYY-MM-DD", help="区间结束交易日")
+            sp.add_argument("--run-id", help="运行标识（缺省取该 scope 已冻结基线的主运行）")
+            sp.add_argument("--account", help="带上这个账户的人工轨")
+            sp.add_argument("--seal", action="store_true", help="复盘前先封存 session")
+            sp.add_argument("--manual-only", action="store_true",
+                            help="只复盘人工轨（账户取 --account 或默认账户）：不需要策略运行，也不读行情")
         if name == "baseline":
             sp.add_argument("--skip-power", action="store_true", help="只冻结基线和出基线报告，不跑扰动和功效测算")
             sp.add_argument("--jobs", type=int, default=1, metavar="N", help="并行回放扰动的进程数（缺省 1）")
@@ -190,6 +199,9 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
         if args.command == "baseline":
             return _baseline(args, settings, con, scope, registry)
+
+        if args.command == "review":
+            return _review(args, settings, con, scope)
 
         if args.command == "collect" and args.check_day:
             import csv as _csv
@@ -360,6 +372,72 @@ def _replay(args, settings, con, scope, registry) -> int:
           f"回放完成{tag}（{r['run_id']}）：{r['days']} 个交易日，{r['steps']:,} 步，机会 {r['setups']}，"
           f"订单 {r['orders']}，交易 {r['trades']}，合计 {r['pnl_ticks']} tick。\n这是纸面模拟，不是投资建议。")
     return 0
+
+
+def _review(args, settings, con, scope) -> int:
+    from collections import Counter
+
+    from .review import build as build_mod
+    from .review.seal import SealError
+    try:
+        if args.day and (args.start or args.end):
+            raise ValueError("--day 和 --from／--to 不能同时给")
+        if args.day:
+            start = end = date.fromisoformat(args.day)
+        elif args.start and args.end:
+            start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
+        else:
+            raise ValueError("需要 --day，或 --from 加 --to")
+        if end < start:
+            raise ValueError("--to 不能早于 --from")
+        run_id = args.run_id
+        if args.manual_only:
+            from .manual.config import load_manual
+            run_id, scope = None, None
+            args.account = args.account or load_manual(settings.project_root).default_account_id
+            if not args.account:
+                raise ValueError("只复盘人工轨时需要账户：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
+        elif not run_id:
+            r = con.execute("SELECT run_id FROM baselines WHERE scope=? AND status='FROZEN' AND run_id IS NOT NULL"
+                            " ORDER BY updated_at_utc DESC LIMIT 1", (str(scope),)).fetchone()
+            if r is None:
+                raise ValueError(f"没有给 --run-id，{scope} 也没有已冻结的基线")
+            run_id = r[0]
+    except ValueError as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    results, skipped = [], Counter()
+    for d in sessions.trading_days(start, end):
+        try:
+            results.append(build_mod.run(settings, con, scope, run_id, d.isoformat(), account_id=args.account,
+                                         seal_first=args.seal))
+        except (SealError, build_mod.ReviewError) as e:
+            skipped[e.code] += 1
+            if start == end:
+                _emit({"ok": False, "status": "REFUSED", "error": e.code, "message": str(e)}, args.json, f"拒绝：{e}")
+                return 1
+    attr, obs = Counter(), Counter()
+    for r in results:
+        attr.update(r["attribution"])
+        obs.update(r["observations"])
+    out = {"ok": bool(results), "run_id": run_id, "scope": str(scope) if scope else f"manual:{args.account}",
+           "reviewed": len(results),
+           "skipped": dict(skipped), "trades": sum(r["trades"] for r in results),
+           "incidents": sum(r["incidents"] for r in results), "candidates": sum(r["candidates"] for r in results),
+           "attribution": dict(attr), "observations": dict(obs),
+           "results": results if len(results) <= 5 else results[:2] + results[-2:]}
+    if len(results) == 1:
+        r = results[0]
+        text = (f"复盘 {r['session_id']}：交易 {r['trades']} 笔，净 {r['net_usd']} 美元；机会允许 {r['allowed']}、拦截 {r['blocked']}；"
+                f"观察 {len(r['observations'])} 条，事故草稿 {r['incidents']} 份。\n报告：{r['reports']['markdown']}")
+    else:
+        text = (f"复盘 {len(results)} 个 session（{'运行 ' + run_id if run_id else '人工轨，账户 ' + args.account}）"
+                + (f"，跳过 {dict(skipped)}" if skipped else "") + f"：交易 {out['trades']} 笔，事故草稿 {out['incidents']} 份。\n"
+                + "归因：" + "、".join(f"{k} {v}" for k, v in sorted(attr.items())) + "\n"
+                + "观察（按天数）：" + "、".join(f"{k} {v}" for k, v in obs.most_common()) + "\n"
+                + "报告目录：" + str(settings.project_root / "reports" / "sessions"))
+    _emit(out, args.json, text + "\n这是纸面模拟和执行记录的复盘，不是投资建议。")
+    return 0 if results else 1
 
 
 def _baseline(args, settings, con, scope, registry) -> int:
