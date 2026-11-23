@@ -1,0 +1,47 @@
+# data-splits Specification
+
+## Purpose
+
+TBD - created by archiving change add-replay-baseline. Update Purpose after archive.
+
+## Requirements
+
+### Requirement: 数据切分登记
+系统 SHALL 按日期把一个品种的交易日切成开发段、向前验证段、之后的 20 日胶囊和影子期，并登记全局日期清单与内容摘要。切分边界来自 `config/research.yaml` 和开发可见截止日。
+
+#### Scenario: 段不重叠
+- **WHEN** 登记一次切分
+- **THEN** 每个交易日至多属于一个段，开发段与向前验证段都不晚于开发可见截止日，胶囊都晚于它
+
+#### Scenario: 没有截止日
+- **WHEN** 开发可见截止日没有设置而数据是真实数据
+- **THEN** 登记被拒绝
+
+#### Scenario: 重复登记
+- **WHEN** 输入不变再次登记
+- **THEN** 得到同一个登记摘要，不新增记录
+
+### Requirement: 20 日胶囊
+胶囊 SHALL 由截止日之后连续的 20 个有效交易日组成。有效交易日指当日实际合约的 RTH 数据完整且来源质量未降级的交易日；无效日留在日期清单里但不计数。不足 20 个有效日的尾部 MUST NOT 成为胶囊。
+
+#### Scenario: 无效日不计数
+- **WHEN** 一段日期里有 1 个降级日和 20 个有效日
+- **THEN** 这 21 个日期构成一个胶囊，有效日数为 20
+
+#### Scenario: 尾部不足
+- **WHEN** 最后只剩 12 个有效日
+- **THEN** 它们记为未成胶囊的余量
+
+### Requirement: 胶囊内容摘要不需要价格入库
+胶囊的内容摘要 SHALL 由导入时留在库外的原始 K 线算出，运行库不保存这些 K 线的价格。同一批 K 线无论留在库外还是先入库再移出，摘要 MUST 相同。
+
+#### Scenario: 两条路径摘要一致
+- **WHEN** 同一份数据一次带截止日导入，另一次先全量导入再执行截止日
+- **THEN** 两次得到的逐日内容摘要相同
+
+### Requirement: 胶囊的默认用途与封存状态
+每个胶囊 SHALL 有状态 `SEALED`。登记时只给出默认的取用顺序：1 个胶囊盲筛，紧接其后的 2 个合成一个 40 日确认。本阶段 MUST NOT 解封或读取任何胶囊的价格。
+
+#### Scenario: 登记后的状态
+- **WHEN** 登记完成
+- **THEN** 全部胶囊状态为 `SEALED`，报告给出胶囊数和按默认流程可评测的候选数

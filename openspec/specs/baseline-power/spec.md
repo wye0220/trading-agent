@@ -1,0 +1,54 @@
+# baseline-power Specification
+
+## Purpose
+
+TBD - created by archiving change add-replay-baseline. Update Purpose after archive.
+
+## Requirements
+
+### Requirement: 实测频率与波动
+功效报告 SHALL 给出开发段的日均成交数、每日净 R 的标准差和零交易日占比。零交易日计入。
+
+#### Scenario: 零交易日计入
+- **WHEN** 开发段有 100 个有效日，其中 80 日没有交易
+- **THEN** 每日净 R 的均值和标准差按 100 日计算，零交易日占比为 80%
+
+### Requirement: 预登记的代表性扰动
+系统 SHALL 只运行 `config/research.yaml` 中登记的扰动，至少各有一个剪枝过滤（Track A）和一个结构修改（Track B）。扰动只改已注册策略的白名单配置键，只在开发段上回放。报告 MUST 写明合成扰动只用于规划，不是候选盈利的证据。
+
+#### Scenario: 扰动改了非白名单键
+- **WHEN** 扰动的差异触及白名单之外的键
+- **THEN** 配置加载失败
+
+#### Scenario: 配对日差
+- **WHEN** 一个扰动回放完成
+- **THEN** 报告给出它相对基线的逐日净 R 差的均值、标准差和一阶自相关
+
+### Requirement: 40 日联合门槛的功效模拟
+系统 SHALL 用连续交易日区块 bootstrap 和实际分配的单侧 α（家族 α 除以预登记检验次数）模拟 40 日确认，分别报告 Track A（非劣效加回撤条件）和 Track B（改善条件）在加入滑点压力和最低成交数之后的整体通过率。模拟的区块长度、次数和种子来自配置，结果可复现。
+
+#### Scenario: 可复现
+- **WHEN** 同样的输入和种子运行两次
+- **THEN** 两次的通过率完全相同
+
+#### Scenario: 成交太少
+- **WHEN** 观察到的成交频率使 40 日内达到最低成交数的概率很低
+- **THEN** 整体通过率随之降低，报告单列"最低成交数"这一条件的通过率
+
+### Requirement: 短窗正式资格
+规划功效目标默认为 80%。当预登记效应下的整体通过率低于目标、可用数据不足或区间不可靠时，短窗正式资格 SHALL 为 `EVIDENCE_INSUFFICIENT`。
+
+#### Scenario: 功效不足
+- **WHEN** 预登记效应 δ 下 Track B 的整体通过率为 35%
+- **THEN** Track B 的短窗正式资格为 `EVIDENCE_INSUFFICIENT`，报告给出按当前设置可检出的最小效应
+
+#### Scenario: 合成数据
+- **WHEN** 输入全部是合成数据
+- **THEN** 资格为 `EVIDENCE_INSUFFICIENT`，报告标 `FIXTURE_ONLY`
+
+### Requirement: 可用天数上限
+报告 SHALL 以截止日之后登记的有效交易日数为可用天数上限，给出独立正态近似下所需的确认日数。可用天数不足时 MUST 写明"可用数据不足以检验 δ=…"并给出当前数据可检验的最小 δ。
+
+#### Scenario: 天数不足
+- **WHEN** 检验 δ 需要 362 日而可用 300 日
+- **THEN** 报告写明不足，并给出 300 日可检验的最小 δ
