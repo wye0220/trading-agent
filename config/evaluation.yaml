@@ -1,0 +1,39 @@
+# 独立评测的协议预设（阶段 8）。这里的数值都是实验预设；改动应发生在任何相关窗口解封之前。
+# Track A／B 的门槛、α、确认窗长度和最低成交数在 config/research.yaml 的 power 一节（阶段 5 已预登记），这里不重复。
+version: eval-protocol-v1
+warmup_trading_days: 20            # 窗口首日之前先回放多少个交易日（两臂相同，不计入度量）
+
+bootstrap:
+  seed: 20261123
+  block_length_days: 5             # 连续交易日区块
+  resamples: 10000
+  min_tail_count: 20               # α × 重采样次数至少这么多，否则加倍重采样
+  max_resamples: 80000
+
+screen:                            # 20 日盲筛：只用来淘汰，不做肯定性推断
+  reject_mean_diff_r_per_day: -0.15    # 配对净 R／日均差低于它
+  reject_drawdown_increase_r: 3.0      # 候选最大回撤比基线多出这么多 R
+
+labeling:                          # 解释／纪律类与 Memory 类：人工标注
+  min_samples: 30
+  min_recognition_rate: 0.80
+  max_false_positive_rate: 0.10
+  min_citation_accuracy: 0.95
+
+visible_summary:                   # 写进运行库和项目内报告的字段；其余只在评测方目录
+  screen: [status, reasons, valid_days]
+  confirm: [status, reasons, valid_days, gates_passed]
+
+# 合成回归：因果性（前视）、成交模型、风控与权限、引擎时钟与重试、异常行情、策略向量
+synthetic_regression:
+  - tests/test_features.py
+  - tests/test_fills.py
+  - tests/test_risk.py
+  - tests/test_engine_runner.py
+  - tests/test_validate.py
+  - tests/test_pa_brooks.py
+  - tests/test_strategy_spi.py
+
+isolation:
+  author_users: [wenye]            # 这些系统用户是候选作者：不能评测真实窗口，也不能写摘要清单
+  sealed_data_root: null           # 封存行情的位置；空 = 数据根目录（隔离还没做的状态）

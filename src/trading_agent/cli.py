@@ -16,7 +16,7 @@ COMMANDS = {
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "memory": 7, "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory", "evaluate"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -24,7 +24,7 @@ HELP = {
     "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒",
     "replay": "在一段日期上回放策略和纸面账本（与 scan 共用同一个引擎）",
     "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
-    "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "跨日聚合已复盘的观察，生成候选并维护候选台账和队列（不调用模型，不读保留集）", "evaluate": "独立评测",
+    "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "跨日聚合已复盘的观察，生成候选并维护候选台账和队列（不调用模型，不读保留集）", "evaluate": "独立评测：预登记、盲筛、正式确认、回归库、隔离检查（评测真实窗口需要评测身份）",
     "memory": "长期记忆：列出、确认、拒绝、否定、回滚（条目只有结构化字段，不调用模型）",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
@@ -88,6 +88,20 @@ def build_parser() -> argparse.ArgumentParser:
                             help="为队列里还没有效应估计的候选回放开发段和向前验证段，然后重排（每个约几分钟）")
             sp.add_argument("--pre-eval-shadow", action="store_true", help="对排名前几的候选做前向预演（只查可运行性）")
             sp.add_argument("--ledger", action="store_true", help="只显示队列、台账统计和余下的 α 额度")
+        if name == "evaluate":
+            sp.add_argument("--register", nargs="+", metavar="候选", help="预登记：冻结候选、协议和两段窗口（同一次登记的候选共用窗口）")
+            sp.add_argument("--screen", metavar="候选", help="阶段 A：20 日盲筛")
+            sp.add_argument("--confirm", metavar="候选", help="阶段 B：独立确认窗上的正式检验（只看一次）")
+            sp.add_argument("--labels", nargs=2, metavar=("候选", "JSON"), help="解释／纪律类与 Memory 类：读人工标注文件评测")
+            sp.add_argument("--status", action="store_true", help="登记、各阶段状态、窗口占用和余下的 α")
+            sp.add_argument("--regression", action="store_true", help="跑事故回归库和合成回归")
+            sp.add_argument("--incident-list", action="store_true", help="列出回归库条目和待确认的事故草稿")
+            sp.add_argument("--incident-confirm", metavar="INCIDENT_ID", help="确认一份事故草稿并收进回归库（收录时独立重放）")
+            sp.add_argument("--incident-check", metavar="INCIDENT_ID",
+                            help="只试着独立重放一份草稿，不收录（ALL = 全部待确认的草稿）")
+            sp.add_argument("--isolation-check", action="store_true", help="以当前身份尝试读保留集目录，逐条报告是否被挡住")
+            sp.add_argument("--digests", action="store_true", help="显示评测器和引擎代码的摘要，以及与受保护清单是否一致")
+            sp.add_argument("--accept-digests", action="store_true", help="把当前摘要写进受保护的清单（只有评测身份能做）")
         if name == "memory":
             sp.add_argument("--confirm", metavar="候选标识", help="确认一条 Memory 候选（偏好立即生效；其余等评测）")
             sp.add_argument("--reject", metavar="候选标识", help="拒绝一条 Memory 候选")
@@ -225,6 +239,8 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
         if args.command == "memory":
             return _memory(args, settings, con, scope)
+        if args.command == "evaluate":
+            return _evaluate(args, settings, con, scope, registry)
         if args.command == "evolve":
             return _evolve(args, settings, con, scope, registry)
 
@@ -463,6 +479,90 @@ def _review(args, settings, con, scope) -> int:
                 + "报告目录：" + str(settings.project_root / "reports" / "sessions"))
     _emit(out, args.json, text + "\n这是纸面模拟和执行记录的复盘，不是投资建议。")
     return 0 if results else 1
+
+
+def _evaluate(args, settings, con, scope, registry) -> int:
+    from .evaluation import guard
+    from .evaluation import run as ev
+    from .evaluation.config import load_eval
+    from .evolve.aggregate import EvolveError
+    from .incidents import library
+    from .research.config import load_research
+    try:
+        cfg = load_eval(settings.project_root)
+        reg = _registry(registry)
+        if args.register:
+            r = ev.register(settings, con, scope, args.register, cfg=cfg)
+            text = (f"已登记 {len(r['registrations'])} 个候选，协议 {r['protocol_id']}。\n"
+                    f"盲筛窗：胶囊 {r['screen_window']['capsules']}（{r['screen_window']['start_day']} 至 {r['screen_window']['end_day']}）；"
+                    f"确认窗：胶囊 {r['confirm_window']['capsules']}（{r['confirm_window']['start_day']} 至 {r['confirm_window']['end_day']}）。\n"
+                    + "\n".join(f"  {x['candidate_id']}（{x['eval_track']}）功效资格 {x['power_eligibility']}" for x in r["registrations"]))
+        elif args.screen or args.confirm:
+            fn, cid = (ev.screen, args.screen) if args.screen else (ev.confirm, args.confirm)
+            r = fn(settings, con, scope, reg, cid, cfg=cfg)
+            text = (f"{r['stage']} {cid}：{r['status']}" + (f"（{'、'.join(r['reasons'])}）" if r.get("reasons") else "")
+                    + f"\n摘要：{r['summary_report']}\n完整报告在评测方目录。")
+        elif args.labels:
+            r = ev.labels(settings, con, args.labels[0], args.labels[1], cfg=cfg, registry=reg)
+            text = f"标注类评测 {args.labels[0]}：{r['status']}" + (f"（未过：{'、'.join(r['reasons'])}）" if r["reasons"] else "")
+        elif args.regression:
+            r = ev.regression(settings, con, cfg, registry=reg)
+            text = (f"回归{'通过' if r['ok'] else '失败'}。事故库：{r['incidents']['summary']}。合成回归：{r['synthetic']['summary']}")
+            _emit({**r, "status": "OK" if r["ok"] else "FAIL"}, args.json, text)
+            return 0 if r["ok"] else 1
+        elif args.incident_list:
+            r = library.listing(con)
+            text = (f"回归库 {len(r['library'])} 个条目，待确认的草稿 {len(r['drafts'])} 份。\n"
+                    + "\n".join(f"  {x['incident_id']} {x['trading_day']} {x['kind']} {x['status']}" for x in r["library"])
+                    + ("\n草稿：\n" + "\n".join(f"  {x['incident_id']} {x['trading_day']} {x['kind']}" for x in r["drafts"]) if r["drafts"] else ""))
+        elif args.incident_check:
+            ids = ([x["incident_id"] for x in library.listing(con)["drafts"]] if args.incident_check == "ALL"
+                   else [args.incident_check])
+            res = [library.confirm(settings, con, i, registry=reg, dry_run=True) for i in ids]
+            r = {"checked": res, "reproducible": sum(x["would_be"] == "CONFIRMED" for x in res)}
+            text = (f"试重放 {len(res)} 份草稿，能独立重放 {r['reproducible']} 份（没有收录，状态没变）。\n"
+                    + "\n".join(f"  {x['incident_id']} {x['trading_day']} {x['kind']}：{x['would_be']}"
+                                + (f"（{x['replay']['reason']}）" if x['replay']['reason'] else "") for x in res))
+        elif args.incident_confirm:
+            r = library.confirm(settings, con, args.incident_confirm, registry=reg)
+            text = (f"事故 {r['incident_id']}（{r['trading_day']}，{r['kind']}）已收录，状态 {r['status']}"
+                    + ("。" if r["status"] == "CONFIRMED" else f"：独立重放对不上（{r['replay']['reason']}），不算覆盖。"))
+        elif args.isolation_check:
+            r = guard.isolation_check(settings, cfg)
+            text = (f"隔离检查（系统用户 {r['user']}）：{r['result']}\n"
+                    + "\n".join(f"  {k}：{'读得到' if v == 'READABLE' else '被挡住'}" for k, v in r["paths"].items())
+                    + f"\n  封存行情在保留集目录内：{'是' if r['sealed_data_inside_holdout'] else '否'}"
+                    + (f"\n问题：{'、'.join(r['problems'])}" if r["problems"] else "") + f"\n{r['note']}")
+            _emit(r, args.json, text)
+            return 0 if r["result"] == "PASS" else 1
+        elif args.digests or args.accept_digests:
+            if args.accept_digests:
+                guard.accept(settings, cfg)
+            r = guard.digests(settings)
+            try:
+                r["manifest"] = guard.verify(settings, cfg) and "MATCH"
+            except guard.GuardError as e:
+                r["manifest"] = e.reason
+            text = f"评测器摘要 {r['evaluator_sha256'][:16]}…　引擎摘要 {r['engine_sha256'][:16]}…　清单：{r['manifest']}"
+        else:
+            r = ev.status(con, scope, load_research(settings.project_root))
+            c = r["capsules"]
+            text = (f"{r['scope']}：登记 {len(r['registrations'])} 个；胶囊 {c['total']} 个（空闲 {c['FREE']}、已分配 {c['ASSIGNED']}、已解封 {c['UNSEALED']}）\n"
+                    + "\n".join(f"  {x['candidate_id']}（{x['eval_track']}）盲筛 {x['screen'] or '未运行'}，确认 {x['confirm'] or '未运行'}"
+                                for x in r["registrations"])
+                    + "\n" + "\n".join(f"  {fam}：还可登记 {a['formal_tests_left']} 次正式检验，余下 α {a['alpha_remaining']:g}"
+                                        for fam, a in r["alpha"].items()))
+    except (ev.EvalError, guard.GuardError, library.IncidentError) as e:
+        _emit({"ok": False, "status": "REFUSED", "error": e.reason, "message": str(e)}, args.json, f"拒绝（{e.reason}）：{e}")
+        return 1
+    except EvolveError as e:
+        _emit({"ok": False, "status": "REFUSED", "error": e.code, "message": str(e)}, args.json, f"拒绝（{e.code}）：{e}")
+        return 1
+    except ConfigError as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    _emit({"ok": True, **r}, args.json, text.rstrip() + "\n这是纸面模拟的评测，不是投资建议。")
+    return 0
 
 
 def _memory(args, settings, con, scope) -> int:
