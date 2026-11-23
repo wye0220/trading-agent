@@ -14,8 +14,8 @@ from trading_agent.strategies.pa_brooks import PaBrooksStrategy
 D1, D2 = date(2025, 11, 25), date(2025, 11, 26)
 PA = PaBrooksStrategy.from_default_config()
 MOCK = SPI.MockStrategy()
-RISK = EC.load_risk(H.PROJECT)                 # 费用未配置，止损滑点 1 tick
-ENG = EC.load_engine(H.PROJECT)
+RISK = EC.load_risk(H.TEST_PROJECT)                 # 费用未配置，止损滑点 1 tick
+ENG = EC.load_engine(H.TEST_PROJECT)
 
 # 一个 RTH 交易日的脚本（点数）。10:00 起：Spike → 回调 → H1 成交后止损 → H2 成交后止损 → H3 被停手拦截。
 SCRIPT = [
@@ -150,7 +150,7 @@ def test_position_keeps_old_version_when_current_changes(env):
     for i in range(-6, 7):
         step(i, RISK)                                      # 到第 6 根：H1 已成交，持仓中
     import copy, yaml
-    raw = yaml.safe_load((H.PROJECT / "config" / "risk.yaml").read_text(encoding="utf-8"))
+    raw = yaml.safe_load((H.TEST_PROJECT / "config" / "risk.yaml").read_text(encoding="utf-8"))
     raw2 = copy.deepcopy(raw)
     raw2["slippage"]["budget_ticks"] = 3
     new = EC.parse_risk(raw2)

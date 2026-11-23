@@ -16,4 +16,4 @@ source_priority: [databento, webull]
 
 # 可选。设了以后，交易日晚于它的 K 线不进运行库。留空则全部导入，
 # 报告标 HOLDOUT_BOUNDARY_NOT_SET。格式 YYYY-MM-DD。
-dev_visible_through:
+dev_visible_through: 2024-12-31

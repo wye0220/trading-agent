@@ -3,7 +3,7 @@
 
 fees:
   mode: round_trip            # per_side | round_trip
-  amount_usd:                 # 每手费用（按上面的口径）。留空：按 0 计，结果带 FEES_NOT_CONFIGURED
+  amount_usd: 5.00            # 每手费用（按上面的口径）。2026-11-22 确认：$5.00 往返。留空：按 0 计，结果带 FEES_NOT_CONFIGURED
 
 slippage:
   entry_ticks: 0              # 入场成交价的不利滑点（已计入成交价）
@@ -12,7 +12,7 @@ slippage:
 
 paper:
   quantity: 1                 # 纸面评测固定手数
-  research_risk_unit_usd:     # 预登记的固定研究风险单位 $X。留空：只按初始风险计 R，带 RESEARCH_RISK_UNIT_NOT_SET
+  research_risk_unit_usd: 500 # 预登记的固定研究风险单位 $X。2026-11-22 确认：$500（ES 10 点）。留空：只按初始风险计 R，带 RESEARCH_RISK_UNIT_NOT_SET
 
 # 真实账户的限额：只用于人工计划的预检和回放报告里单列的"风险规模"结果。
 account:

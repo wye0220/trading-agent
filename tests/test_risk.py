@@ -9,8 +9,8 @@ from trading_agent import db
 from trading_agent.config import ConfigError
 from trading_agent.engine import config as EC, risk as R
 
-RAW = yaml.safe_load((H.PROJECT / "config" / "risk.yaml").read_text(encoding="utf-8"))
-ERAW = yaml.safe_load((H.PROJECT / "config" / "engine.yaml").read_text(encoding="utf-8"))
+RAW = yaml.safe_load((H.TEST_PROJECT / "config" / "risk.yaml").read_text(encoding="utf-8"))
+ERAW = yaml.safe_load((H.TEST_PROJECT / "config" / "engine.yaml").read_text(encoding="utf-8"))
 NOW = 1_800_000_000
 DAY = "2025-11-25"
 
@@ -40,7 +40,7 @@ def state(**kw):
 
 # ---------------------------------------------------------------- 1.3 配置
 def test_default_risk_config_is_unconfigured():
-    c = EC.load_risk(H.PROJECT)
+    c = EC.load_risk(H.TEST_PROJECT)
     assert c.fee_amount_usd is None and not c.fees_configured and c.round_trip_fee_usd == 0
     assert c.research_risk_unit_usd is None and c.paper_quantity == 1
     assert (c.entry_slippage_ticks, c.stop_slippage_ticks, c.slippage_budget_ticks) == (0, 1, 1)
@@ -51,7 +51,7 @@ def test_default_risk_config_is_unconfigured():
 
 
 def test_default_engine_config():
-    e = EC.load_engine(H.PROJECT)
+    e = EC.load_engine(H.TEST_PROJECT)
     assert (e.flatten_minutes_before_close, e.replay_activation_delay_seconds, e.max_explanation_retries) == (5, 0, 3)
     assert set(e.token_budgets) == set(EC.KINDS)
 
@@ -113,7 +113,7 @@ def test_paper_risk_ignores_account_budget(env):
 def test_manual_plan_reasons(env):
     es = env.settings.instrument("ES")
     chk = lambda c, st, stop=16, q=None: R.check_manual_plan(es, stop, c, st, NOW, q)          # noqa: E731
-    assert chk(EC.load_risk(H.PROJECT), state()).reason_code == "BUDGET_NOT_APPROVED"            # 默认配置
+    assert chk(EC.load_risk(H.TEST_PROJECT), state()).reason_code == "BUDGET_NOT_APPROVED"            # 默认配置
     assert chk(funded(account__approved=False), state()).reason_code == "BUDGET_NOT_APPROVED"
     assert chk(funded(account__max_contracts=None), state()).reason_code == "BUDGET_NOT_APPROVED"
     f = funded()
@@ -178,7 +178,7 @@ def test_reserve_rejects_stale_version(env):
 
 
 def test_reserve_blocked_when_not_approved(env):
-    d = reserve(env, EC.load_risk(H.PROJECT), "p1")
+    d = reserve(env, EC.load_risk(H.TEST_PROJECT), "p1")
     assert d.reason_code == "BUDGET_NOT_APPROVED"
     assert env.con.execute("SELECT COUNT(*) FROM account_risk_days").fetchone()[0] == 0
 

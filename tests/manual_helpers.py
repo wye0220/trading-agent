@@ -12,7 +12,7 @@ from trading_agent.manual.common import paper_run_id
 
 D1 = T.D1
 ACCT = "acct1"
-MAN = MC.load_manual(H.PROJECT)
+MAN = MC.load_manual(H.TEST_PROJECT)
 FUNDED = TR.funded()                        # 费用 5，单笔预算 500，日损 1000，最多 5 手，已批准
 UNFUNDED = T.RISK                           # 默认配置：限额未批准
 

@@ -18,11 +18,11 @@ NOW = T.bar_end(5) + 10                                   # 脚本日 10:30:10 E
 
 # ---------------------------------------------------------------- 1.2 配置
 def test_manual_config_defaults_and_validation():
-    c = MC.load_manual(H.PROJECT)
+    c = MC.load_manual(H.TEST_PROJECT)
     assert (c.default_account_id, c.plan_ttl_minutes, c.cooldown_minutes, c.quiet_window_minutes) == (None, 30, 15, 15)
     assert (c.plan_coverage_threshold, c.stop_tolerance_ticks, c.daily_loss_warn_fraction) == (0.8, 2, 0.8)
     assert all(c.rules[r] for r in MC.RULES) and c.strategy_state_max_age_bars == 2
-    raw = yaml.safe_load((H.PROJECT / "config" / "manual.yaml").read_text(encoding="utf-8"))
+    raw = yaml.safe_load((H.TEST_PROJECT / "config" / "manual.yaml").read_text(encoding="utf-8"))
     for key, bad in (("plan_ttl_minutes", 0), ("plan_coverage_threshold", 1.5), ("cooldown_minutes", -1),
                      ("rules", {"NOPE": True}), ("rules", {"NAKED_POSITION": "yes"})):
         r = copy.deepcopy(raw)
@@ -37,7 +37,7 @@ def test_manual_config_defaults_and_validation():
 
 
 def test_news_windows_config(tmp_path):
-    assert MC.load_news_windows(H.PROJECT) == []
+    assert MC.load_news_windows(H.TEST_PROJECT) == []
     (tmp_path / "config").mkdir()
     f = tmp_path / "config" / "news_windows.yaml"
     f.write_text('windows:\n  - {label: FOMC, start_utc: "2025-11-25T19:00:00Z", end_utc: "2025-11-25T20:00:00Z"}\n')

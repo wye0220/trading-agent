@@ -11,12 +11,49 @@ from trading_agent import sessions
 from trading_agent.config import load_settings
 
 PROJECT = Path(__file__).resolve().parents[1]
+
+
+def _neutral_project() -> Path:
+    """测试用的项目根：config/ 是真实配置的副本，但把由用户填写的值恢复成"未配置"。
+
+    这样测试结果不随 config/ 里的账户限额、费用、开发可见截止日等个人设置变化。其余目录链接到真实项目。
+    """
+    import atexit
+    import shutil
+    import tempfile
+
+    import yaml
+
+    root = Path(tempfile.mkdtemp(prefix="trading-agent-test-project-"))
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    shutil.copytree(PROJECT / "config", root / "config")
+    for name in ("schemas", "src", "docs", "tests"):
+        (root / name).symlink_to(PROJECT / name, target_is_directory=True)
+
+    def edit(rel, fn):
+        f = root / "config" / rel
+        raw = yaml.safe_load(f.read_text(encoding="utf-8"))
+        fn(raw)
+        f.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    def risk(r):
+        r["fees"]["amount_usd"] = None
+        r["paper"]["research_risk_unit_usd"] = None
+        r["account"].update(approved=False, budget_per_trade_usd=None, daily_loss_limit_usd=None, max_contracts=None)
+
+    edit("paths.yaml", lambda r: r.update(dev_visible_through=None))
+    edit("risk.yaml", risk)
+    edit("manual.yaml", lambda r: r.update(default_account_id=None))
+    return root
+
+
+TEST_PROJECT = _neutral_project()
 COLUMNS = ["instrument_root", "contract_id", "timeframe", "bar_start_utc", "open", "high", "low", "close",
            "volume", "source", "fetched_at_utc", "fixture"]
 
 
 def make_settings(tmp_path: Path, **kw):
-    return load_settings(PROJECT, env={}, data_root=tmp_path / "data-root",
+    return load_settings(TEST_PROJECT, env={}, data_root=tmp_path / "data-root",
                          release_db=tmp_path / "release" / "release-state.sqlite", **kw)
 
 

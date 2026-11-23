@@ -6,7 +6,7 @@ from jsonschema import Draft202012Validator
 import helpers as H
 from trading_agent.engine import config as EC, llm
 
-ENG = EC.load_engine(H.PROJECT)
+ENG = EC.load_engine(H.TEST_PROJECT)
 DISC = "以上为规则化的价格行为学习标注，不构成投资建议。期货有杠杆，风险自负。"
 
 GOOD = {
