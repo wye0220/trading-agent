@@ -47,6 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--order-events", metavar="CSV", help="导入订单生命周期事件文件（建议与 --trades 一起给）")
             sp.add_argument("--rebuild", action="store_true",
                             help="清空派生数据和交易日状态后从原始 K 线重算（改了换月规则等配置后使用）")
+        if name == "collect":
+            sp.add_argument("--from-mcp", metavar="JSON",
+                            help="读 Webull MCP 连接器 get_futures_bars 返回的 JSON 文件（文件里有几个已登记的品种就存几个）")
+            sp.add_argument("--fetched-at", metavar="ISO8601", help="该文件的取数时刻（UTC）。缺省用文件的修改时间")
         if name == "scan":
             sp.add_argument("--as-of", metavar="ISO8601", help="历史扫描的决策时点（UTC，或带时区）。缺省为盘中扫描")
             sp.add_argument("--allow-real-data", action="store_true",
@@ -157,6 +161,9 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
         if args.command == "baseline":
             return _baseline(args, settings, con, scope, registry)
 
+        if args.command == "collect" and args.from_mcp:
+            return _collect_mcp(args, settings, con, scope)
+
         if args.command == "collect":
             from .collect import run_collect
             if adapter is None:
@@ -200,6 +207,39 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
     finally:
         con.close()
     return 2
+
+
+def _collect_mcp(args, settings, con, scope) -> int:
+    import os
+    from datetime import datetime, timezone
+
+    from .collect import run_collect
+    from .config import Scope
+    from .sources.webull import FetchError
+    from .sources.webull_mcp import McpDump
+    try:
+        now = sessions.parse_utc(args.fetched_at) if args.fetched_at else int(os.path.getmtime(args.from_mcp))
+        dump = McpDump(args.from_mcp, datetime.fromtimestamp(now, timezone.utc).date())
+    except (FetchError, OSError, ValueError) as e:
+        _emit({"ok": False, "status": "ERROR", "error": "BAD_DUMP", "message": str(e)}, args.json, f"拒收：{e}")
+        return 1
+    results, lines = [], []
+    for root, cid in sorted(dump.roots().items()):
+        if root not in settings.instruments:
+            results.append({"ok": False, "instrument_root": root, "error": "UNREGISTERED_ROOT", "rows_written": 0})
+            lines.append(f"{root}：品种没有登记，跳过。")
+            continue
+        sc = Scope(scope.strategy_family, root, scope.session_type, scope.timeframe)
+        s = run_collect(settings, con, sc, dump, now=now)
+        results.append({"instrument_root": root, **s})
+        lines.append(
+            f"{root}：{s['contract_id']} 取到 {s['rows_fetched']} 根，写入 {s['rows_written']} 行"
+            f"（新 {s['new_bars']}，修订 {s['revisions']}），未收线跳过 {s['skipped_unclosed']}，"
+            f"已有跳过 {s['skipped_existing']}。" if s["ok"] else f"{root}：失败，{s['message']}。没有写入。")
+    ok = bool(results) and all(r["ok"] for r in results)
+    _emit({"ok": ok, "fetched_at_utc": sessions.iso(now), "results": results}, args.json,
+          "\n".join(lines) or "文件里没有任何合约。")
+    return 0 if ok else 1
 
 
 def _registry(registry):

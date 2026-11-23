@@ -159,7 +159,7 @@ def render_baseline(r: dict) -> str:
                   f"{m['session']['roll_rule_version']}"],
         ["行情清单", f"{m['data']['first_day']} 至 {m['data']['last_day']}，{m['data']['days']} 个交易日，"
                  f"{m['data']['bars']:,} 根（含全部 revision），摘要 `{m['data']['sha256'][:12]}`"],
-        ["切分登记", f"`{m['splits']['registry_id']}`"],
+        ["切分登记", f"`{r['registry']['registry_id']}`（基线只绑定开发段和向前验证段）"],
         ["代码摘要", f"`{m['code_sha256'][:12]}`" + (f"，git `{(m.get('git') or {}).get('commit', '')[:10]}`"
                                                if (m.get("git") or {}).get("commit") else "")],
         ["提示词摘要", "无（回放不调用模型）"], ["随机种子", "无（回放是确定性的）"],

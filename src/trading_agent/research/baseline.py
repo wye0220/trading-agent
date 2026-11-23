@@ -144,7 +144,11 @@ def build_manifest(settings: Settings, con: sqlite3.Connection, scope: Scope, st
         "data": {**market_manifest(con, scope, days), "available_at_delay_seconds": settings.available_at_delay_seconds,
                  "source_priority": list(settings.source_priority),
                  "dev_visible_through": settings.dev_visible_through.isoformat() if settings.dev_visible_through else None},
-        "splits": {"registry_id": reg["registry_id"], "content_sha256": reg["content_sha256"]},
+        # 只绑定开发可见的两段。截止日之后的胶囊每采集一天新数据就会变，不应让基线失效。
+        "splits": {"dev_visible_through": reg["definition"]["dev_visible_through"],
+                   "forward_validation_start": reg["definition"]["forward_validation_start"],
+                   "segments": [[s["kind"], s["start_day"], s["end_day"], s["valid_days"], s["content_sha256"]]
+                                for s in reg["segments"] if s["kind"] in (splits.DEVELOPMENT, splits.FORWARD)]},
         "prompt_digest": None,                        # 回放不调用模型，没有提示词参与
         "random_seed": None,                          # 回放是确定性的，没有随机数
         "carry_over": "持仓不跨交易日：截止强平在 RTH 收盘前平掉全部仓位并撤掉挂单，所以不会跨切分窗口",

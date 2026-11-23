@@ -137,7 +137,7 @@
 
 - 起始时刻不早于截止时刻的第一根子 K 到来时：未成交的入场单 `CANCELLED`（原因 `CUTOFF`）；持仓按那根的开盘价减止损滑点平仓，退出原因 `FORCED_FLAT`。
 - 截止之后不生成新订单（`AFTER_CUTOFF`）。
-- 截止之后没有行情：仓位带 `UNPRICEABLE` 和 `UNABLE_TO_FLATTEN`，写一条 `CRITICAL` 告警；等第一个有效价格（可能是次日）再按上面的规则平仓。
+- 截止之后没有行情：到 RTH 收盘再过 `unpriceable_grace_seconds`（默认 120 秒）仓位仍在，才带上 `UNPRICEABLE` 和 `UNABLE_TO_FLATTEN`，写一条 `CRITICAL` 告警（只写一次）。截止到收盘之间平仓用的子 K 还没到达不算没有行情。等第一个有效价格（可能是次日）再按上面的规则平仓。
 
 ### 反手
 

@@ -250,7 +250,7 @@ def test_freeze_fixture_baseline_is_reproducible(env):
     m = base["manifest"]
     assert m["strategy"]["enabled_setups"] == ["spike_pullback"] and m["engine_version"] == "fill-v1.0"
     assert m["data"]["days"] == 3 and m["indicators"]["ATR_PERIOD"] == 14 and m["random_seed"] is None
-    assert m["splits"]["registry_id"] == base["registry"]["registry_id"] and m["fixture"] is True
+    assert [x[0] for x in m["splits"]["segments"]] == ["DEVELOPMENT", "FORWARD_VALIDATION"] and m["fixture"] is True
     # 校验运行的明细已清掉，只留摘要；主运行的明细还在
     n = lambda t, rid: env.con.execute(f"SELECT COUNT(*) FROM {t} WHERE run_id=?", (rid,)).fetchone()[0]   # noqa: E731
     assert n("scan_events", f"base:{base['baseline_id']}") == 78 * 3
@@ -541,3 +541,21 @@ def test_report_marks_unestimable_pf(env):
     assert RP._pf(r) == "不可估" and RP._pf({"profit_factor": None, "trades": 0}) == "—"
     assert RP._pf({"profit_factor": 1.234, "trades": 3}) == "1.23"
     assert RP.scope_slug("pa_brooks:ES:RTH:5m") == "pa_brooks_ES_RTH_5m"
+
+
+def test_new_withheld_days_do_not_invalidate_baseline(tmp_path):
+    """截止日之后每天新采集的数据会改变胶囊登记，但不改变基线标识。"""
+    e, d = split_env(tmp_path, n_dev=4, n_held=2)
+    c = cfg(**{"splits.capsule_valid_days": 2, "splits.forward_validation_start": d[2].isoformat()})
+    strat = REG.get("pa_brooks")
+
+    def ids():
+        reg = SP.build(e.settings, e.con, "ES", c)
+        return reg["registry_id"], BL.baseline_id_of(BL.build_manifest(e.settings, e.con, e.scope, strat, reg, c, ER.RISK, ER.ENG))
+    r1, b1 = ids()
+    extra = days_from(START, 8)[6:]
+    H.write_csv(e.root / "real2.csv", [b for x in extra for b in real(x)])
+    e.ingest()
+    r2, b2 = ids()
+    assert r2 != r1 and b2 == b1
+    e.con.close()
