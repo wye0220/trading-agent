@@ -130,6 +130,7 @@ def run(settings: Settings, con: sqlite3.Connection, scope: Scope, registry, *, 
             rejected.append({"source": source, "cluster_id": c["cluster_id"] if c else None, "reason": e.reason,
                              "message": str(e)})
 
+    memory = _memory_candidates(settings, con, wins, promotable, evolve_id, now)
     ranked = queue.rank(con, scope_text, cfg, research_cfg.power)
     result = "CANDIDATES" if results else "NO_CANDIDATE"
     summary = {
@@ -147,7 +148,7 @@ def run(settings: Settings, con: sqlite3.Connection, scope: Scope, registry, *, 
                       "bucket_share": c["bucket"]["share"], "group_id": c["group_id"], "note": c["note"]}
                      for c in clusters],
         "promotable": len(promotable), "reduce_requests": sum(r is not None for r in reduce_ids),
-        "candidates": results, "created": created, "rejected": rejected, "superseded": superseded, "queue": ranked,
+        "memory_candidates": memory, "candidates": results, "created": created, "rejected": rejected, "superseded": superseded, "queue": ranked,
         "alpha": cands.alpha_summary(con, scope_text, research_cfg.power),
     }
     with con:
@@ -156,6 +157,44 @@ def run(settings: Settings, con: sqlite3.Connection, scope: Scope, registry, *, 
                                                              "superseded", "windows")}), now, evolve_id))
     summary["reports"] = write_report(settings, summary, out_dir)
     return summary
+
+
+def _memory_candidates(settings, con, wins, promotable, evolve_id, now) -> dict:
+    """可升级、有暴露条件的人工轨聚类 → discipline_pattern 的 Memory 候选。没通过 Memory 校验的按原因计数。"""
+    from ..memory import items as mitems
+    from ..memory import store as mstore
+    from ..memory.registry import load_registry
+    reg = load_registry(settings.project_root)
+    out = {"created": [], "existing": 0, "skipped": {}}
+    for c in promotable:
+        if c["track"] != "MANUAL" or c["counter_days"] is None or c["fixture"]:
+            continue
+        win = next(w for w in wins if w["scope"] == c["scope"])
+        n = len(c["days"]) + len(c["counter_days"])
+        event = c["mechanism"].removeprefix("DISCIPLINE_").lower()
+        body = {"kind": "discipline_pattern", "scope": "global", "valid_until": None,
+                "source_event_ids": [e for e in c["evidence"] if mitems.schema_errors(
+                    settings.project_root, "MemoryCandidate", _probe(e)) == []][:50],
+                "statement": {"subject": "trader", "condition": f"event={event}", "metric": "occurrence_day_rate",
+                              "value": round(len(c["days"]) / n, 4), "unit": "ratio", "sample_n": n,
+                              "period": f"{win['sessions'][0]['trading_day']}..{win['sessions'][-1]['trading_day']}",
+                              "source": "evolve_cluster"}}
+        try:
+            r = mstore.propose(settings, con, body, origin=evolve_id, reg=reg, now=now)
+        except mitems.Invalid as e:
+            out["skipped"][e.reason] = out["skipped"].get(e.reason, 0) + 1
+            continue
+        if r["created"]:
+            out["created"].append(r["memory_candidate_id"])
+        else:
+            out["existing"] += 1
+    return out
+
+
+def _probe(evidence_id: str) -> dict:
+    return {"kind": "user_preference", "scope": "global", "valid_until": None, "source_event_ids": [evidence_id],
+            "statement": {"subject": "user_preference", "condition": None, "metric": "x", "value": 1, "unit": None,
+                          "sample_n": None, "period": None, "source": "trader_note"}}
 
 
 def load_proposals(path: Path | str) -> list[dict]:
@@ -220,6 +259,12 @@ def render(s: dict) -> str:
                          f" {_pct(q['inputs'].get('counter_share'))} |")
         lines += ["", "分数 = 效应项 × 证据天数权重 × 机制可信度，公式和权重在 `config/evolve.yaml` 预登记。"
                   "效应估计来自开发段和向前验证段，只用于排队，不是正式检验。"]
+    m = s.get("memory_candidates") or {}
+    if m.get("created") or m.get("existing") or m.get("skipped"):
+        lines += ["", "## Memory 候选（人工轨）", "",
+                  f"新增 {len(m['created'])} 条，已有 {m['existing']} 条"
+                  + ("，跳过：" + "、".join(f"{k} {v}" for k, v in sorted(m["skipped"].items())) if m["skipped"] else "")
+                  + "。用 `memory` 命令查看和确认。"]
     lines += ["", "## α 额度", "", "| 假设家族 | 开发尝试 | 已登记的正式检验 | 已消耗 | 还可登记 | 余下的 α |",
               "| --- | --- | --- | --- | --- | --- |"]
     for fam, a in s["alpha"].items():

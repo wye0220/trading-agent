@@ -13,7 +13,8 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | 5 回放与基线 | 完成（基线在 2019-09-05 至 2024-12-31 的真实 ES 数据上冻结；之后的数据封存） | `docs/replay-baseline.md` |
 | 6A 日复盘 | 完成（规则生成，不调用模型；基线主运行 1340 天和 Alpaca 人工轨已复盘） | `docs/daily-review.md` |
 | 6B 聚合演化 | 完成（确定性聚合、候选台账、双轨队列；模型归纳一步只留接口） | `docs/evolve.md` |
-| 7 及以后 | 未开始 | — |
+| 7 Memory 存储 | 完成（结构化条目、版本快照与回滚；市场事实和执行模式等阶段 8 评测后才能生效） | `docs/memory.md` |
+| 8 及以后 | 未开始 | — |
 
 ## 环境
 
@@ -79,6 +80,7 @@ uv run python -m trading_agent review --day 2024-06-12 --seal
 uv run python -m trading_agent review --day 2026-11-10 --manual-only --seal    # 只复盘人工轨
 uv run python -m trading_agent evolve --last 0 --account alpaca-paper           # 跨日聚合，生成候选
 uv run python -m trading_agent evolve --ledger                                 # 队列与余下的 α 额度
+uv run python -m trading_agent memory                                          # 长期记忆：当前版本、生效条目、待确认的候选
 
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect

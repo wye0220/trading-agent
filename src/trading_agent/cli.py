@@ -14,9 +14,9 @@ from .config import DEFAULT_SCOPE, ConfigError, load_settings, parse_scope
 COMMANDS = {
     "ingest": 1, "collect": 1, "scan": 4,
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
-    "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
+    "memory": 7, "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -25,6 +25,7 @@ HELP = {
     "replay": "在一段日期上回放策略和纸面账本（与 scan 共用同一个引擎）",
     "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
     "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "跨日聚合已复盘的观察，生成候选并维护候选台账和队列（不调用模型，不读保留集）", "evaluate": "独立评测",
+    "memory": "长期记忆：列出、确认、拒绝、否定、回滚（条目只有结构化字段，不调用模型）",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
 
@@ -87,6 +88,15 @@ def build_parser() -> argparse.ArgumentParser:
                             help="为队列里还没有效应估计的候选回放开发段和向前验证段，然后重排（每个约几分钟）")
             sp.add_argument("--pre-eval-shadow", action="store_true", help="对排名前几的候选做前向预演（只查可运行性）")
             sp.add_argument("--ledger", action="store_true", help="只显示队列、台账统计和余下的 α 额度")
+        if name == "memory":
+            sp.add_argument("--confirm", metavar="候选标识", help="确认一条 Memory 候选（偏好立即生效；其余等评测）")
+            sp.add_argument("--reject", metavar="候选标识", help="拒绝一条 Memory 候选")
+            sp.add_argument("--reason", default="NOT_WANTED", help="拒绝原因：NOT_WANTED、WRONG、DUPLICATE、INVALID")
+            sp.add_argument("--supersede", metavar="ITEM_ID", help="否定一条生效的条目（标 SUPERSEDED，保留历史）")
+            sp.add_argument("--evidence", action="append", default=[], metavar="事件标识", help="否定所依据的证据，可重复")
+            sp.add_argument("--rollback", metavar="MEMORY_VERSION", help="把头指针指回一个已有的版本")
+            sp.add_argument("--history", action="store_true", help="显示最近的 Memory 事件")
+            sp.add_argument("--context", metavar="任务类型", help="显示某类任务会注入的条目（如 SessionReview、watch）")
         if name in ("replay", "baseline", "evolve"):
             sp.add_argument("--allow-real-data", action="store_true",
                             help="允许在真实数据上运行（还需要已设置开发可见截止日，且区间不晚于它）")
@@ -213,6 +223,8 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
         if args.command == "review":
             return _review(args, settings, con, scope)
 
+        if args.command == "memory":
+            return _memory(args, settings, con, scope)
         if args.command == "evolve":
             return _evolve(args, settings, con, scope, registry)
 
@@ -453,6 +465,66 @@ def _review(args, settings, con, scope) -> int:
     return 0 if results else 1
 
 
+def _memory(args, settings, con, scope) -> int:
+    from .memory import context as mctx
+    from .memory import items as mitems
+    from .memory import store
+    from .memory.registry import load_registry
+
+    acts = [a for a in ("confirm", "reject", "supersede", "rollback") if getattr(args, a)]
+    try:
+        reg = load_registry(settings.project_root)
+        if len(acts) > 1:
+            raise ValueError("--confirm、--reject、--supersede、--rollback 一次只能给一个")
+        if args.confirm:
+            r = store.confirm(settings, con, args.confirm, reg=reg)
+            text = (f"已确认，生效：{r['sentence']}\nmemory_version：{r['memory_version']}" if r["item_id"] else
+                    f"已确认，等待评测（阶段 8）后才生效：{r['sentence']}")
+        elif args.reject:
+            r = store.reject(con, args.reject, reason=args.reason)
+            text = f"已拒绝候选 {args.reject}。"
+        elif args.supersede:
+            r = store.supersede(settings, con, args.supersede, evidence=args.evidence)
+            text = f"条目 {r['item_id']} 已标为 SUPERSEDED。memory_version：{r['memory_version']}"
+        elif args.rollback:
+            r = store.rollback(con, args.rollback)
+            text = f"已回滚到 {r['memory_version']}（{r['items']} 条），之前是 {r['previous_memory_version']}。"
+        elif args.history:
+            r = {"events": store.history(con)}
+            text = "\n".join(f"{e['at']} {e['event']} {e['item_id'] or e['memory_candidate_id'] or ''}"
+                             f" {e['from'] or '—'} → {e['to'] or '—'}（{e['actor']}）" for e in r["events"]) or "还没有 Memory 事件。"
+        elif args.context:
+            r = mctx.build(settings, con, scope, args.context, reg=reg)
+            text = (f"{args.context} 会注入 {len(r['items'])} 条（memory_version {r['memory_version'] or '无'}）：\n"
+                    + "\n".join("  " + i["sentence"] for i in r["items"]))
+        else:
+            store.sweep(con)
+            loaded = mctx.load(settings, con, scope, reg=reg)
+            pend = []
+            for c in store.candidates(con):
+                try:
+                    c["sentence"], c["invalid"] = mitems.sentence(settings, reg, mitems.validate(settings, reg, c["body"])), None
+                except mitems.Invalid as e:
+                    c["sentence"], c["invalid"] = None, e.reason
+                pend.append(c)
+            r = {**loaded, "candidates": pend}
+            text = (f"memory_version：{loaded['memory_version'] or '无'}，scope {loaded['scope']} 下生效 {len(loaded['items'])} 条"
+                    + (f"，排除 {loaded['excluded']}" if loaded["excluded"] else "") + "\n"
+                    + "\n".join("  " + i["sentence"] for i in loaded["items"])
+                    + (f"\n待处理的候选 {len(pend)} 条：\n" if pend else "\n没有待处理的候选。")
+                    + "\n".join(f"  {c['memory_candidate_id']}（{c['status']}）"
+                                + (c["sentence"] if c["sentence"] else f"不合法：{c['invalid']}") for c in pend))
+    except (store.MemoryError_, db.StaleVersion) as e:
+        code = getattr(e, "reason", "STALE_VERSION")
+        _emit({"ok": False, "status": "REFUSED", "error": code, "message": str(e)}, args.json, f"拒绝（{code}）：{e}")
+        return 1
+    except (ValueError, KeyError, ConfigError) as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    _emit({"ok": True, **r}, args.json, text.rstrip())
+    return 0
+
+
 def _evolve(args, settings, con, scope, registry) -> int:
     from .engine import runner
     from .engine.config import load_engine, load_risk
@@ -673,7 +745,11 @@ def _watch(args, settings, con, scope, registry, adapter) -> int:
               "错误：没有账户标识：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
         return 2
     try:
-        interval = watch_mod.resolve_interval(settings.watch, args.interval)
+        override = args.interval
+        if override is None:                # 已生效的偏好排在命令行之后、配置文件之前
+            from .memory import context as mctx
+            override = mctx.preferences(settings, con, scope).get("watch_poll_interval_seconds")
+        interval = watch_mod.resolve_interval(settings.watch, override)
     except ValueError as e:
         _emit({"status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
         return 2

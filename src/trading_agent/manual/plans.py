@@ -208,7 +208,9 @@ def create(settings: Settings, con: sqlite3.Connection, *, account_id: str, scop
     plan_id = plan_id or "plan_" + uuid.uuid4().hex[:12]
     pre = precheck(settings, con, plan_id=plan_id, account_id=account_id, scope=scope, strategy=strategy, inp=inp,
                    risk_cfg=risk_cfg, manual_cfg=manual_cfg, now_utc=now, snapshot_fetched_at=snapshot_fetched_at)
-    vt = versions.current(scope, strategy, risk_cfg)
+    from ..memory import store as memory_store
+    mem_head = memory_store.head(con)
+    vt = versions.current(scope, strategy, risk_cfg, memory_version=mem_head["memory_version"] if mem_head else None)
     expires = now + manual_cfg.plan_ttl_minutes * 60
     with con:
         con.execute(

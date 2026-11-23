@@ -182,3 +182,15 @@
 ## 数据异常类别
 
 见 `docs/data-contract.md` 的「校验规则与异常类别」。
+
+## Memory（阶段 7）
+
+- **Memory 条目**：一条已确认的长期记忆，只由结构化字段组成。种类 `user_preference`、`market_fact`、`discipline_pattern`。
+- **`statement`**：条目的内容：`subject`、`condition`、`metric`、`value`、`unit`、`sample_n`、`period`、`source`。每个字符串是枚举或固定文法。
+- **登记表（`config/memory.yaml`）**：偏好键、指标、条件键、来源和任务相关性的白名单。
+- **禁止项**：风险上限和实时状态的名字，写在代码里，登记表放行不了。
+- **`memory_version`**：一组 `(item_id, version)` 的快照，标识由成员列表的摘要得出。不可变。
+- **头指针（`memory_head`）**：当前生效的 `memory_version`。回滚只移动它。
+- **`scope_digest`**：某个 scope 实际加载到的条目的摘要。
+- **`PENDING_EVALUATION`**：市场事实或执行模式已经你确认，等阶段 8 的评测通过后才生效。
+- **模板句子**：由条目字段和登记表里的标签生成、带 `[item_id]` 的一句话，是模型看到的唯一形式。
