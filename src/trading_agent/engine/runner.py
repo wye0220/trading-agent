@@ -231,6 +231,12 @@ def _step(settings, con, run_id, strategy, as_of, risk_cfg, engine_cfg, release_
     base = {"run_id": run_id, "scope": str(scope), "as_of_utc": as_of, "trading_day": day_s, "contract_id": cid,
             "source": source, "version_tuple": vt}
     if signal is not None and signal["bar_end_utc"] <= run["last_bar_end_utc"]:
+        if as_of >= rth_close + engine_cfg.unpriceable_grace_seconds:
+            # 收盘后再没有新的 K 线：仓位若还在，说明截止之后一直没有行情，标为无法定价（只标一次）
+            before = _load_book(con, run_id)
+            book, ev = fills.flatten_check(before, as_of)
+            if ev:
+                _persist(con, run, scope, inst, cid, day_s, risk_cfg, before, book, ev)
         stored = con.execute("SELECT decision_json FROM scan_events WHERE event_id=?",
                              ("scan_" + _h(run_id, signal["bar_end_utc"])[:24],)).fetchone()
         if stored is not None:                        # 同一根信号 K 已处理过：空操作
@@ -268,8 +274,11 @@ def _step(settings, con, run_id, strategy, as_of, risk_cfg, engine_cfg, release_
         if final:
             book, ev = fills.expire_orders(book, as_of)
             events += ev
-            book, ev = fills.flatten_check(book, as_of)
-            events += ev
+            # 截止时刻到 RTH 收盘之间，平仓用的那根子 K 可能还没收线、没到达：这时不算"没有行情"。
+            # 收盘再过一段宽限时间仍没有任何价格，才标为无法定价。
+            if as_of >= rth_close + engine_cfg.unpriceable_grace_seconds:
+                book, ev = fills.flatten_check(book, as_of)
+                events += ev
         return _persist(con, run, scope, inst, cid, day_s, risk_cfg, before, book, events)
 
     if not pending:                                   # 没有新的信号 K：只维护订单簿和水位

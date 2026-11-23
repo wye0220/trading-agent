@@ -7,7 +7,7 @@ splits:
   warmup_trading_days: 20                # 数据起点后的预热日：回放照跑，但不计入度量
   default_usage:                         # 默认取用顺序
     blind_screen_capsules: 1
-    confirm_capsules: 2
+    confirm_capsules: 6                  # 2026-11-22 另立协议：确认窗从 40 日延长到 120 日（见 docs/replay-baseline.md）
 
 report:
   # 分组：标签 → 策略 decision_metadata 里的路径。报告代码不认识任何策略专有字段。
@@ -26,7 +26,7 @@ power:
   block_length_days: 5          # 连续交易日区块长度
   simulations: 2000             # 外层：模拟多少个 40 日确认窗
   inner_resamples: 1000         # 内层：每个确认窗里求置信界的重采样次数
-  confirm_days: 40
+  confirm_days: 120             # 2026-11-22 另立协议，定于查看任何确认数据之前。原默认 40 日内期望成交只有 12 笔
   alpha_family: 0.05            # 一个假设家族的单侧 α
   max_formal_tests: 5           # 家族内预登记的正式检验次数 K；每次检验用 α_family / K
   power_target: 0.80

@@ -1,5 +1,5 @@
 # 人工轨（plan、watch、成交导入、纪律）的设置。
-default_account_id:            # 默认账户标识。留空时 plan / watch 必须用 --account 指定
+default_account_id: alpaca-paper   # 默认账户标识。2026-11-22：Alpaca 模拟盘（paper trading），权益约 $1,000,000。留空时 plan / watch 必须用 --account 指定
 plan_ttl_minutes: 30           # 计划默认多久之后失效
 cooldown_minutes: 15           # 止损出场后的冷却时间：其间同向再开仓触发提醒
 quiet_window_minutes: 15       # 同一持仓同一规则在这段时间内不重复提醒

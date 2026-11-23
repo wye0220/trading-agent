@@ -59,6 +59,7 @@ class EngineConfig:
     replay_activation_delay_seconds: int
     max_explanation_retries: int
     token_budgets: Mapping[str, int]
+    unpriceable_grace_seconds: int = 120
 
 
 def _money(v, path) -> Decimal | None:
@@ -119,7 +120,8 @@ def parse_engine(raw: Mapping) -> EngineConfig:
             flatten_minutes_before_close=_nat(raw["flatten_minutes_before_close"], "flatten_minutes_before_close"),
             replay_activation_delay_seconds=_nat(raw["replay_activation_delay_seconds"], "replay_activation_delay_seconds"),
             max_explanation_retries=_nat(raw["explanations"]["max_retries"], "explanations.max_retries", 1),
-            token_budgets=budgets)
+            token_budgets=budgets,
+            unpriceable_grace_seconds=_nat(raw.get("unpriceable_grace_seconds", 120), "unpriceable_grace_seconds"))
     except (KeyError, TypeError) as e:
         raise ConfigError(f"引擎配置缺少或写错了字段：{e}") from None
 

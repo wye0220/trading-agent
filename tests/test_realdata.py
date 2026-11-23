@@ -107,6 +107,6 @@ def test_registered_splits(real):
     st, con = real
     reg = SP.build(st, con, "ES", RC.load_research(st.project_root))
     assert reg["summary"] == {"development_days": 1080, "forward_validation_days": 251, "capsules": 20,
-                              "capsule_valid_days": 400, "remainder_valid_days": 14, "candidates_supported": 6}
+                              "capsule_valid_days": 400, "remainder_valid_days": 14, "candidates_supported": 2}
     caps = [s for s in reg["segments"] if s["kind"] == "CAPSULE"]
     assert caps[0]["start_day"] == "2025-01-02" and all(s["status"] == "SEALED" and s["valid_days"] == 20 for s in caps)

@@ -31,7 +31,8 @@ REG = default_registry()
 
 def cfg(**over):
     raw = copy.deepcopy(RAW)
-    raw["power"].update(simulations=200, inner_resamples=100, min_dev_days=2)
+    raw["power"].update(simulations=200, inner_resamples=100, min_dev_days=2, confirm_days=40)
+    raw["splits"]["default_usage"]["confirm_capsules"] = 2
     for path, v in over.items():
         node = raw
         keys = path.split(".")

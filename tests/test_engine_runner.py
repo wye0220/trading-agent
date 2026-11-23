@@ -431,3 +431,39 @@ def test_replay_on_real_data_needs_cutoff_and_flag(tmp_path):
     out = RN.replay(e.settings, e.con, e.scope, PA, D1, D1, risk_cfg=RISK, engine_cfg=ENG, allow_real_data=True)
     assert out["run_mode"] == "historical_replay" and out["trades"] == 2
     e.con.close()
+
+
+# ---------------------------------------------------------------- 截止强平与"无法定价"的判定时点
+@pytest.mark.parametrize("one_minute", [False, True])
+def test_forced_flat_in_replay_is_not_flagged_unpriceable(env, one_minute):
+    """持仓到截止：回放在 15:55 那一步时平仓用的子 K 还没到，不能因此标成无法定价，也不能告警。"""
+    load(env, scripted_day(script=SCRIPT[:7], one_minute=one_minute))
+    out = do_replay(env)
+    (t,) = rows(env, "SELECT * FROM paper_trades WHERE run_id=?", out["run_id"])
+    assert t["exit_reason"] == "FORCED_FLAT" and t["exit_time_utc"] == H.et(D1, 15, 55)
+    assert t["exit_ticks"] == px(5007.5) - 1                              # 15:55 那根的开盘价再让 1 tick
+    assert not {"UNPRICEABLE", "UNABLE_TO_FLATTEN"} & set(json.loads(t["flags_json"]))
+    assert env.con.execute("SELECT COUNT(*) FROM alerts WHERE kind='UNABLE_TO_FLATTEN'").fetchone()[0] == 0
+
+
+def test_unpriceable_only_after_close_plus_grace(env):
+    """截止之后真的没有行情：收盘再过宽限时间才标为无法定价并告警。"""
+    cut = H.et(D1, 15, 55)
+    data = [r for r in scripted_day(script=SCRIPT[:7]) if sessions.parse_utc(r["bar_start_utc"]) < cut]
+    load(env, data)
+    run_id = RN.create_run(env.con, env.scope, PA, "fixture")
+    kw = dict(risk_cfg=RISK, engine_cfg=ENG)
+    for s in sessions.expected_rth_slots(D1):
+        if s < cut:
+            RN.step(env.settings, env.con, run_id, PA, s + 305, **kw)
+    flags = lambda: set(json.loads(env.con.execute(                       # noqa: E731
+        "SELECT flags_json FROM paper_positions WHERE run_id=?", (run_id,)).fetchone()[0]))
+    alerts = lambda: env.con.execute("SELECT COUNT(*) FROM alerts WHERE kind='UNABLE_TO_FLATTEN'").fetchone()[0]   # noqa: E731
+    close = H.et(D1, 16, 0)
+    for t in (cut + 5, close + 5, close + ENG.unpriceable_grace_seconds - 1):
+        RN.step(env.settings, env.con, run_id, PA, t, **kw)
+        assert not flags() & {"UNPRICEABLE", "UNABLE_TO_FLATTEN"} and alerts() == 0
+    RN.step(env.settings, env.con, run_id, PA, close + ENG.unpriceable_grace_seconds, **kw)
+    assert {"UNPRICEABLE", "UNABLE_TO_FLATTEN"} <= flags() and alerts() == 1
+    RN.step(env.settings, env.con, run_id, PA, close + 3600, **kw)
+    assert alerts() == 1                                                  # 只告警一次
