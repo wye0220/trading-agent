@@ -1,0 +1,16 @@
+name: 原子反手
+description: 持有多仓。一张卖出的止损限价单在 4998 成交：多仓在 4998 平仓（REVERSAL），同时开出 4998 的空仓。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+orders:
+  - {id: R, side: SHORT, type: STOP_LIMIT_NEXT_BAR, trigger: 4998, limit: 4997.75, stop: 5002, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:45:05", expires: "09:50:00"}
+steps:
+  - {bar: {t: "09:46", b: [4999, 4999.5, 4997.5, 4998]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: R}
+    - {kind: EXIT, order: P, reason: REVERSAL, price: 4998, flags: []}
+    - {kind: ENTRY, order: R, price: 4998}
+  orders: {R: FILLED}
+  position: {side: SHORT, entry: 4998, stop: 5002, target: 4990}

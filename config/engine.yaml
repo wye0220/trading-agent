@@ -1,0 +1,12 @@
+# 引擎设置。改这里的成交相关项等于改成交假设，应同时更新 engine 版本说明。
+flatten_minutes_before_close: 5     # 截止强平：RTH 收盘前几分钟（常规日 15:55 ET）
+replay_activation_delay_seconds: 0  # 回放时，决策时点 = 信号 K 的可用时点 + 这个延迟
+explanations:
+  max_retries: 3
+token_budgets:                      # 各类模型调用的上下文预算（token，按字符数保守估算）
+  ScanExplanation: 1500
+  PretradeCheck: 1500
+  SessionReview: 6000
+  Candidate: 4000
+  MemoryCandidate: 1500
+  ReleaseReview: 4000

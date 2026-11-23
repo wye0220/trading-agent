@@ -1,0 +1,24 @@
+# 风控与成本配置。金额类字段留空表示"未配置"，由你填写。
+# 改任何一项都会改变 risk_version。
+
+fees:
+  mode: round_trip            # per_side | round_trip
+  amount_usd:                 # 每手费用（按上面的口径）。留空：按 0 计，结果带 FEES_NOT_CONFIGURED
+
+slippage:
+  entry_ticks: 0              # 入场成交价的不利滑点（已计入成交价）
+  stop_ticks: 1               # 止损、强平成交价的不利滑点（已计入成交价）
+  budget_ticks: 1             # 每手计划风险里预留的滑点预算（只用于算计划风险和手数）
+
+paper:
+  quantity: 1                 # 纸面评测固定手数
+  research_risk_unit_usd:     # 预登记的固定研究风险单位 $X。留空：只按初始风险计 R，带 RESEARCH_RISK_UNIT_NOT_SET
+
+# 真实账户的限额：只用于人工计划的预检和回放报告里单列的"风险规模"结果。
+account:
+  approved: false             # 你确认下面的限额后改为 true。false 时人工计划一律 BUDGET_NOT_APPROVED
+  budget_per_trade_usd:
+  daily_loss_limit_usd:
+  max_contracts:
+  max_stops_per_day: 2
+  snapshot_max_age_seconds: 120   # 账户快照超过这个时效视为过期（阶段 4 的 watch 会按轮询间隔调整）

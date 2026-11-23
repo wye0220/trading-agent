@@ -1,0 +1,13 @@
+name: MARKET_NEXT_OPEN：激活后第一个开盘
+description: 有 1 分钟线时，跨着激活时刻的那一根不用，在下一根的开盘价成交。
+date: 2025-11-25
+
+orders:
+  - {id: M, side: LONG, type: MARKET_NEXT_OPEN, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:35", b: [4999, 5000.5, 4998.5, 5000]}}
+  - {bar: {t: "09:36", b: [5000.25, 5001, 5000, 5000.75]}}
+expect:
+  events:
+    - {kind: ENTRY, order: M, price: 5000.25, reason: open, flags: []}
+  position: {entry: 5000.25, stop: 4996, target: 5008.75}

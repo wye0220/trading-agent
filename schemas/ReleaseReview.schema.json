@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trading-agent/ReleaseReview.schema.json",
+  "title": "ReleaseReview",
+  "description": "发布前的审阅摘要。批准只能由用户在独立入口给出，本对象不构成批准。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "manifest_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16,64}$"
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "evaluation_status": {
+      "enum": [
+        "PASS_FOR_SHADOW",
+        "FAIL",
+        "EVIDENCE_INSUFFICIENT"
+      ]
+    },
+    "shadow_status": {
+      "enum": [
+        "NOT_STARTED",
+        "RUNNING",
+        "PASSED",
+        "FAILED",
+        "EVIDENCE_INSUFFICIENT"
+      ]
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 10
+    },
+    "observable_costs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 10
+    },
+    "open_risks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 10
+    },
+    "rollback_target": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 120
+    },
+    "rollback_trigger": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600
+    },
+    "recommendation": {
+      "enum": [
+        "READY_FOR_USER_DECISION",
+        "NOT_READY"
+      ]
+    }
+  },
+  "required": [
+    "candidate_id",
+    "manifest_hash",
+    "scope",
+    "evaluation_status",
+    "shadow_status",
+    "changes",
+    "rollback_trigger",
+    "recommendation"
+  ]
+}

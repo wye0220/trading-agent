@@ -82,6 +82,22 @@
 - **`skip_reason`**：信号被拦截或无法判定的原因，如 `TAIL_WINDOW_UNCONFIGURED`、`TWO_STOPS_HALT`、`FEATURE_UNAVAILABLE:atr14`。
 - **定点精度**：EMA 和 ATR 以 1e-9 tick 为单位的整数保存。
 
+## 引擎（阶段 3）
+
+- **决策时点**：引擎处理一根信号 K 的时刻，也是挂单的激活时刻。回放里取信号 K 的可用时点。
+- **过期时刻**：信号 K 收盘 + 有效根数 × 周期，且不晚于截止强平时刻。
+- **子 K**：喂给成交模型的行情。有 1 分钟线时是 1 分钟线，否则是 5 分钟线本身。
+- **订单状态**：`ARMED`、`TRIGGERED`、`FILLED`、`EXPIRED`、`CANCELLED`。
+- **退出原因**：`STOP`、`TARGET`、`FORCED_FLAT`、`REVERSAL`。
+- **截止强平**：RTH 收盘前 5 分钟（常规日 15:55 ET）撤掉未成交的入场单并平掉持仓。
+- **歧义标记**：`AMBIGUOUS_ENTRY`（入场跨着激活时刻）、`AMBIGUOUS_BAR`（止损与目标先后不明，按止损）、`AMBIGUOUS_PATH`（一次目标触及没有被采信）。完整列表见 `docs/engine.md`。
+- **运行（run）**：引擎的一次连续执行，有自己的账本、策略状态和水位。`run_id` 加运行模式构成它的风险域。
+- **风险域**：纸面以 scope、运行、交易日为键；真实账户以账户、交易日为键。两者互不影响。
+- **每手计划风险**：止损 tick 数 × tick 价值 + 往返费用 + 滑点预算。
+- **R**：`r_initial` 按该笔的初始止损距离归一化；`r_research` 按预登记的固定研究风险单位。
+- **引擎版本**：成交规则和事件顺序的版本号，现在是 `fill-v1.0`。
+- **`FROZEN_CONTRACT`**：阶段 1–3 验收后冻结的表结构、状态枚举和引擎公共接口。之后的改动要走编号 migration 并重跑全部既有测试。
+
 ## 数据位置
 
 - **数据根目录（`data_root`）**：项目之外，默认 `~/trading-agent-data/`。存放原始行情（`databento/`、`webull/`）和运行库（`runtime/`）。

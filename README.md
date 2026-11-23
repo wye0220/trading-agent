@@ -8,7 +8,8 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | --- | --- | --- |
 | 1 数据合同与项目骨架 | 完成 | `docs/data-contract.md` |
 | 2 策略插件接口与 PA v1.0 | 完成（策略还没有接进 `scan`，也没有在真实数据上运行过） | `docs/strategy-spec.md` |
-| 3 引擎核心及以后 | 未开始 | — |
+| 3 引擎核心 | 完成（成交模型、风控、逐步运行器；还没有命令行入口，也没有在真实数据上运行过） | `docs/engine.md` |
+| 4 Scanner、纸面账本与人工预检及以后 | 未开始 | — |
 
 ## 环境
 
@@ -102,4 +103,8 @@ uv run pytest -m webull_live -s  # 需要 Webull 凭证并联网
 
 合成样本在 `tests/fixtures/`，由 `tests/fixtures/make_fixtures.py` 生成，全部带 `FIXTURE` 标记。合成结果只用于验收，不能作为策略证据。
 
-策略的逐 bar 向量在 `tests/vectors/strategy/pa_brooks/`。每个向量会正向跑一遍，再按价格翻转跑一遍镜像。
+策略的逐 bar 向量在 `tests/vectors/strategy/pa_brooks/`，成交向量在 `tests/vectors/fills/`。每个向量会正向跑一遍，再按价格翻转跑一遍镜像。
+
+## 需要你填写的配置
+
+`config/risk.yaml` 里的金额类字段默认留空：每手费用、研究风险单位、账户的单笔预算、日损上限、最大手数。没填之前纸面评测照常运行（费用按 0 计并打标记），人工计划的预算核验一律不放行。填好账户限额后把 `account.approved` 改为 `true`。

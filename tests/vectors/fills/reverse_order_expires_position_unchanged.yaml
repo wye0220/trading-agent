@@ -1,0 +1,15 @@
+name: 反向订单过期，原仓不变
+description: 反向订单直到过期没有触发，多仓的止损和目标不变。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+orders:
+  - {id: R, side: SHORT, type: STOP_LIMIT_NEXT_BAR, trigger: 4998, limit: 4997.75, stop: 5002, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:45:05", expires: "09:50:00"}
+steps:
+  - {bar: {t: "09:46", b: [5001, 5002, 4999, 5001.5]}}
+  - {expire: "09:50:00"}
+expect:
+  events:
+    - {kind: EXPIRED, order: R, reason: TTL}
+  orders: {R: EXPIRED}
+  position: {side: LONG, entry: 5000, stop: 4996, target: 5008, flags: []}

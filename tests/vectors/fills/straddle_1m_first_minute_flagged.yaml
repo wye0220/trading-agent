@@ -1,0 +1,12 @@
+name: 跨着激活时刻的第一根 1 分钟线
+description: 09:35–09:36 这根 1 分钟线包含激活时刻 09:35:05，在它里面触发的成交带 AMBIGUOUS_ENTRY。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:35", b: [4999, 5000.5, 4998.5, 5000.25]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000, flags: [AMBIGUOUS_ENTRY]}

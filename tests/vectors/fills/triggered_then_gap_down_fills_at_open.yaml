@@ -1,0 +1,14 @@
+name: 已触发，后一根开盘就在限价以内
+description: 第一根触发未成交；后一根开盘 5000.5 已在限价以内，按开盘价成交。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [5003, 5004, 5002, 5003.5]}}
+  - {bar: {t: "09:37", b: [5000.5, 5001.5, 5000, 5001]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000.5, reason: open}
+  position: {entry: 5000.5, target: 5009.5}

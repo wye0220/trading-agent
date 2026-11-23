@@ -1,0 +1,15 @@
+name: 半日市：截止时刻撤销未成交的入场单
+description: 当日 13:00 收盘，截止时刻 12:55。12:55 开始的行情到来时订单被撤销，即使它触及了触发价也不成交。
+
+date: 2025-11-28
+flatten_at: "12:55"
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "12:50:05", expires: "12:55:00"}
+steps:
+  - {bar: {t: "12:54", b: [4998, 4999.5, 4997.5, 4999]}}
+  - {bar: {t: "12:55", b: [4999, 5002, 4998.5, 5001]}}
+expect:
+  events:
+    - {kind: CANCELLED, order: A, reason: CUTOFF}
+  orders: {A: CANCELLED}
+  position: null

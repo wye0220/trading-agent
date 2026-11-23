@@ -229,7 +229,7 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | 运行库 | `<data_root>/runtime/trading_agent.sqlite` | 全部业务表 |
 | 发布库 | `releases/release-state.sqlite` | `active_pointers`（按四维 scope）和 `release_events`。阶段 1 只建表，不写 |
 
-两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
+两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。运行库目前有 `0001_initial`（阶段 1）和 `0002_engine`（阶段 3）。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
 
 纸面、人工、影子和回放的记录用 `risk_domain`、`run_mode` 和 `run_id` 区分。
 
@@ -248,7 +248,14 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | `scan_events` | 每轮扫描（含 `strategy_family`、`strategy_state_json`） | 1（数据校验），4（策略） |
 | `alerts` | 告警 | 1 起 |
 | `freeze_events` | 冻结与解除 | 1（数据原因），9（其余） |
-| `paper_orders`、`paper_fills` | 纸面订单与成交 | 3、4 |
+| `paper_orders`、`paper_fills` | 纸面订单与成交。阶段 3 给订单加了激活时刻、过期时刻、信号 K 时刻、触发价、限价、止损、目标描述、手数、标记、结束原因 | 3 |
+| `engine_runs` | 引擎的每个运行：scope、模式、风险域、三个水位、当前策略状态 | 3 |
+| `paper_positions` | 纸面仓位：成交价、止损、目标、截止强平时刻、标记、绑定的版本元组 | 3 |
+| `paper_trades` | 已完结的纸面交易：盈亏、费用、两种 R、退出原因、标记 | 3 |
+| `explanation_requests` | 给模型的解释请求队列，带快照 ID 和尝试次数 | 3 起 |
+| `account_risk_days` | 真实账户按交易日的已实现亏损、预留、止损次数、是否停手 | 3（结构），4（使用） |
+| `account_risk_events` | 真实账户已完结交易的登记，按券商 ID 去重 | 3（结构），4（使用） |
+| `risk_reservations` | 人工计划的风险预留 | 3（结构），4（使用） |
 | `trader_plans` | 人工交易计划 | 4 |
 | `manual_trades`、`manual_order_events` | 人工成交与订单生命周期 | 4 |
 | `broker_snapshots` | 券商只读快照 | 4 |
