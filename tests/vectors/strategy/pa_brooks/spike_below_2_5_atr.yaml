@@ -1,0 +1,12 @@
+name: Spike 幅度略低于 2.5×ATR
+description: 末根收盘 5009.75，幅度 9.75 点，不足 10 点，不识别为 Spike。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5010, 5005.5, 5009.75], expect: {spike: false}}
+  - {b: [5009.75, 5010, 5008, 5008.25], expect: {spike: false}}

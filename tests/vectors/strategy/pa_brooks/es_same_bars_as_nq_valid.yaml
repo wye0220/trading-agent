@@ -1,0 +1,13 @@
+name: 同样的 K 线在 ES 上有效
+description: 与 nq_retrace_65_invalid 相同的 K 线。ES 的阈值是 75%，60.4% 的回撤有效，随后的阳线是 H1。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5004.75, 5005.25], expect: {spike: true, phase: PULLBACK}}
+  - {b: [5005.25, 5007.5, 5005, 5007.25], expect: {signal: SETUP_VALID, label: H1, trigger: 5007.75, limit: 5008, stop: 5004.5}}

@@ -1,0 +1,14 @@
+name: 止损、净盈利、止损：中间的盈利把计数清零，信号有效
+description: 止损、净盈利、止损：中间的盈利把计数清零，信号有效。当日已完结的纸面交易在第 3 根 K 线时提供给策略。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5009, 5009.5], trades: [{exit: STOP, net: -1}, {exit: TARGET, net: 1}, {exit: STOP, net: -1}]}
+  - {b: [5009.5, 5010, 5007, 5007.5]}
+  - {b: [5007.5, 5010, 5007.25, 5009.75], expect: {signal: SETUP_VALID, label: H1}}

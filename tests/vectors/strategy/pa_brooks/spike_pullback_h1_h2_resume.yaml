@@ -1,0 +1,22 @@
+name: Spike 回调的 H1、H2，随后趋势恢复
+description: >
+  牛 Spike（首根开盘 5000.25，极值 5012）之后回调。第一条反向腿后的合格阳线是 H1；没有新腿的阳线不升级；
+  新腿之后是 H2；收盘越过 Spike 极值后以 TREND_RESUMED 结束。ADR 201 tick，目标为 0.40×ADR 向上取整 = 81 tick。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: {points: 50.25, valid_days: 10}
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5009, 5009.5], expect: {phase: PULLBACK}}
+  - {b: [5009.5, 5010, 5007, 5007.5]}
+  - {b: [5007.5, 5010, 5007.25, 5009.75], expect: {signal: SETUP_VALID, label: H1, side: LONG, trigger: 5010.25, limit: 5010.5, stop: 5006.75, target: [OFFSET_FROM_FILL_TICKS, 81], skip: null}}
+  - {b: [5009.75, 5010, 5008.5, 5009]}
+  - {b: [5009, 5009.75, 5008.75, 5009.5], expect: {label: null}}
+  - {b: [5009.5, 5009.5, 5007.5, 5007.75]}
+  - {b: [5007.75, 5009.5, 5007.5, 5009.25], expect: {signal: SETUP_VALID, label: H2, side: LONG, trigger: 5009.75, limit: 5010, stop: 5006.75}}
+  - {b: [5009.25, 5013, 5009, 5012.5], expect: {ended: TREND_RESUMED, spike: false}}
+  - {b: [5012.5, 5012.75, 5011, 5011.25], expect: {spike: false}}

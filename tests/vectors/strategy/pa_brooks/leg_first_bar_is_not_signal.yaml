@@ -1,0 +1,14 @@
+name: 开启反向腿的那根 K 自己不能当信号 K
+description: 回调第 1 根既破了前低又收阳在上半部，但它是腿的首根，不标 H。之后的十字星不合格，再之后的阳线才是 H1。ADR 不可用，目标为 2R。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5009, 5011.75, 5005.25, 5011.5], expect: {signal: WAIT, label: null, phase: PULLBACK}}
+  - {b: [5011.5, 5011.75, 5010.5, 5011.5]}
+  - {b: [5011.5, 5011.75, 5010.75, 5011.75], expect: {signal: SETUP_VALID, label: H1, side: LONG, trigger: 5012, limit: 5012.25, stop: 5005, target: [INITIAL_RISK_MULTIPLE, 2]}}

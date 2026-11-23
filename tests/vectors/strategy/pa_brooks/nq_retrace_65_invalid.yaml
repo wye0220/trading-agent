@@ -1,0 +1,13 @@
+name: NQ 回撤 60.4% 作废
+description: 同样的 K 线在 NQ 上回撤 7.25 点 ÷ 12 点 = 60.4%，超过 NQ 的 60% 阈值。
+instrument: NQ
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5004.75, 5005.25], expect: {ended: INVALIDATED_RETRACE, spike: false}}
+  - {b: [5005.25, 5007.5, 5005, 5007.25], expect: {signal: WAIT, label: null}}

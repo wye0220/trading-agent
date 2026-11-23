@@ -1,0 +1,11 @@
+name: 只有一根强趋势 K 不算 Spike
+description: 一根 12.5 点的大阳线，幅度超过 2.5×ATR，但只有一根，不识别为 Spike。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5013, 4999.75, 5012.5], expect: {spike: false}}
+  - {b: [5012.5, 5012.75, 5011.5, 5012], expect: {spike: false}}

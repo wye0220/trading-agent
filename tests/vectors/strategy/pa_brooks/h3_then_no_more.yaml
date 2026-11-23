@@ -1,0 +1,21 @@
+name: H3 之后不再发信号
+description: 同一个 Spike 的回调里依次出现 H1、H2、H3；第四条腿之后的合格阳线不再标号。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5009, 5009.5], expect: {phase: PULLBACK}}
+  - {b: [5009.5, 5010, 5007, 5007.5]}
+  - {b: [5007.5, 5010, 5007.25, 5009.75], expect: {signal: SETUP_VALID, label: H1, target: [INITIAL_RISK_MULTIPLE, 2]}}
+  - {b: [5009.75, 5010, 5008.5, 5009]}
+  - {b: [5009, 5009.5, 5007.5, 5007.75]}
+  - {b: [5007.75, 5009.5, 5007.5, 5009.25], expect: {signal: SETUP_VALID, label: H2}}
+  - {b: [5009.25, 5009.5, 5007.25, 5007.5]}
+  - {b: [5007.5, 5009.25, 5007.25, 5009], expect: {signal: SETUP_VALID, label: H3, trigger: 5009.5, limit: 5009.75, stop: 5006.75}}
+  - {b: [5009, 5009.25, 5007, 5007.25]}
+  - {b: [5007.25, 5009, 5007, 5008.75], expect: {signal: WAIT, label: null, skip: null}}

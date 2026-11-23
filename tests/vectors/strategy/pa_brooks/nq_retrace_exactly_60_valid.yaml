@@ -1,0 +1,13 @@
+name: NQ 回撤恰好 60% 仍有效
+description: Spike 首根开盘 5000，极值 5012.5，分母 12.5 点。回调低点 5005，回撤 7.5 点 = 60%，等于 NQ 的阈值仍有效，随后的阳线是 H1。
+instrument: NQ
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012.5, 5005.5, 5012], expect: {spike: true, spike_extreme: 5012.5}}
+  - {b: [5012, 5012.25, 5005, 5005.5], expect: {spike: true, phase: PULLBACK}}
+  - {b: [5005.5, 5008, 5005.25, 5007.75], expect: {signal: SETUP_VALID, label: H1, trigger: 5008.25, limit: 5008.5, stop: 5004.75}}

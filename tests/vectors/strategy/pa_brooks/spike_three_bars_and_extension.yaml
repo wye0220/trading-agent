@@ -1,0 +1,14 @@
+name: 三根强趋势 K，之后不够强但仍创新高的 K 延伸 Spike
+description: 第 3 根强阳线把极值推到 5016。第 4 根实体很小但创了新高 5017，Spike 延伸。第 5 根不再创新高，是回调第 1 根。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, spike_extreme: 5012}}
+  - {b: [5011.5, 5016, 5011.25, 5015.75], expect: {spike: true, phase: SPIKE, spike_extreme: 5016}}
+  - {b: [5015.75, 5017, 5015.25, 5016], expect: {phase: SPIKE, spike_extreme: 5017}}
+  - {b: [5016, 5016.5, 5014.5, 5015], expect: {phase: PULLBACK, spike_extreme: 5017}}

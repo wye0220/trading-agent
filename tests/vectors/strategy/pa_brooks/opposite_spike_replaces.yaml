@@ -1,0 +1,13 @@
+name: 反向 Spike 取代原来的 Spike
+description: 牛 Spike 之后连续两根强阴线，幅度 10.75 点，识别为熊 Spike，原来的牛 Spike 作废。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5005.25, 5005.5], expect: {cycle: BULL_SPIKE, phase: PULLBACK}}
+  - {b: [5005.5, 5005.75, 5000.5, 5000.75], expect: {spike: true, cycle: BEAR_SPIKE, phase: SPIKE, spike_extreme: 5000.5}}
