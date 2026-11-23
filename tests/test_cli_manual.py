@@ -13,7 +13,7 @@ def run(env, capsys, *argv, **kw):
 
 
 def test_implemented_commands():
-    assert IMPLEMENTED == {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review"} and len(COMMANDS) == 15
+    assert IMPLEMENTED == {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve"} and len(COMMANDS) == 15
 
 
 def test_plan_quick_json(env, capsys):

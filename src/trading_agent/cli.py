@@ -16,7 +16,7 @@ COMMANDS = {
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -24,7 +24,7 @@ HELP = {
     "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒",
     "replay": "在一段日期上回放策略和纸面账本（与 scan 共用同一个引擎）",
     "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
-    "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
+    "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "跨日聚合已复盘的观察，生成候选并维护候选台账和队列（不调用模型，不读保留集）", "evaluate": "独立评测",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
 
@@ -77,7 +77,17 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--from", dest="start", metavar="YYYY-MM-DD", help="回放起始交易日")
             sp.add_argument("--to", dest="end", metavar="YYYY-MM-DD", help="回放结束交易日")
             sp.add_argument("--run-id", help="运行标识（缺省自动生成）")
-        if name in ("replay", "baseline"):
+        if name == "evolve":
+            sp.add_argument("--last", type=int, metavar="N",
+                            help="读最近 N 个已封存并已复盘的 session（缺省取 config/evolve.yaml，0 = 全部）")
+            sp.add_argument("--run-id", help="策略轨的运行标识（缺省取该 scope 已冻结基线的主运行）")
+            sp.add_argument("--account", help="带上这个账户的人工轨观察")
+            sp.add_argument("--import-proposals", metavar="JSON", help="导入提案文件（逐条校验，内容只当数据）")
+            sp.add_argument("--estimate", action="store_true",
+                            help="为队列里还没有效应估计的候选回放开发段和向前验证段，然后重排（每个约几分钟）")
+            sp.add_argument("--pre-eval-shadow", action="store_true", help="对排名前几的候选做前向预演（只查可运行性）")
+            sp.add_argument("--ledger", action="store_true", help="只显示队列、台账统计和余下的 α 额度")
+        if name in ("replay", "baseline", "evolve"):
             sp.add_argument("--allow-real-data", action="store_true",
                             help="允许在真实数据上运行（还需要已设置开发可见截止日，且区间不晚于它）")
         if name == "review":
@@ -202,6 +212,9 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
         if args.command == "review":
             return _review(args, settings, con, scope)
+
+        if args.command == "evolve":
+            return _evolve(args, settings, con, scope, registry)
 
         if args.command == "collect" and args.check_day:
             import csv as _csv
@@ -438,6 +451,83 @@ def _review(args, settings, con, scope) -> int:
                 + "报告目录：" + str(settings.project_root / "reports" / "sessions"))
     _emit(out, args.json, text + "\n这是纸面模拟和执行记录的复盘，不是投资建议。")
     return 0 if results else 1
+
+
+def _evolve(args, settings, con, scope, registry) -> int:
+    from .engine import runner
+    from .engine.config import load_engine, load_risk
+    from .evolve import candidates as cands
+    from .evolve import queue
+    from .evolve import run as ev
+    from .evolve.aggregate import EvolveError
+    from .evolve.config import load_evolve
+    from .research import splits
+    from .research.config import load_research
+    log = (lambda m: None) if args.json else (lambda m: print(m, file=sys.stderr, flush=True))
+    reg = _registry(registry)
+    tail = "\n候选只是待评测的假设，不经独立评测和人工批准不会生效。这不是投资建议。"
+    try:
+        if sum(map(bool, (args.estimate, args.pre_eval_shadow, args.ledger))) > 1:
+            raise ConfigError("--estimate、--pre-eval-shadow、--ledger 一次只能用一个")
+        cfg, rcfg = load_evolve(settings.project_root), load_research(settings.project_root)
+        if args.estimate:
+            r = ev.estimate_queue(settings, con, scope, reg, cfg=cfg, research_cfg=rcfg,
+                                  allow_real_data=args.allow_real_data, log=log)
+            text = (f"估计了 {len(r['estimated'])} 个候选。\n" + _queue_text(r["queue"]))
+        elif args.pre_eval_shadow or args.ledger:
+            base = ev.frozen_baseline(con, str(scope))
+            queue.supersede(con, str(scope), queue.base_release_of(base["baseline_id"]), cfg)
+            ranked = queue.rank(con, str(scope), cfg, rcfg.power)
+            if args.ledger:
+                r = {"ok": True, "scope": str(scope), "baseline_id": base["baseline_id"], "queue": ranked,
+                     "alpha": cands.alpha_summary(con, str(scope), rcfg.power),
+                     "candidates": dict(con.execute("SELECT status, COUNT(*) FROM candidates WHERE scope=? GROUP BY 1",
+                                                    (str(scope),)).fetchall())}
+                text = ("候选：" + ("、".join(f"{k} {v}" for k, v in sorted(r["candidates"].items())) or "无") + "\n"
+                        + _queue_text(ranked) + "\n" + "\n".join(
+                            f"{fam}：开发尝试 {a['dev_attempts']}，正式检验已登记 {a['formal_registered']}、"
+                            f"还可登记 {a['formal_tests_left']}，余下 α {a['alpha_remaining']:g}" for fam, a in r["alpha"].items()))
+            else:
+                r = {"ok": True, "scope": str(scope), **queue.pre_eval_shadow(
+                    settings, con, scope, reg, base, ranked, cfg=cfg, risk_cfg=load_risk(settings.project_root),
+                    engine_cfg=load_engine(settings.project_root), allow_real_data=args.allow_real_data)}
+                text = (f"前向预演：{r['status']}。{r['note']}" if r["status"] != "DONE" else
+                        f"前向预演：{len(r['days'])} 个交易日，" + "；".join(
+                            f"{x['candidate_id']} {'通过' if x['ok'] else '已看过' if x['ok'] is None else '未通过'}"
+                            for x in r["results"]) + f"。{r['note']}")
+        else:
+            props = ev.load_proposals(args.import_proposals) if args.import_proposals else None
+            r = ev.run(settings, con, scope, reg, run_id=args.run_id, account_id=args.account, last_n=args.last,
+                       cfg=cfg, research_cfg=rcfg, proposals=props)
+            w = r["windows"][0]
+            text = (f"聚合 {r['scope']}：{w['sessions']} 个 session（{w['first_day']} 至 {w['last_day']}），"
+                    f"聚类 {len(r['clusters'])} 个，可升级 {r['promotable']} 个。\n"
+                    f"结果 {r['result']}：新候选 {r['created']} 个，拒绝 {len(r['rejected'])} 个，"
+                    f"转 SUPERSEDED {len(r['superseded'])} 个。\n"
+                    + "".join(f"  {c['candidate_id']} {c['eval_track']} {c['key']}：{c['from']} → {c['to']}"
+                              f"（{c['evidence_days']} 天，{c['action']}）\n" for c in r["candidates"])
+                    + "".join(f"  拒绝 {x['source']}：{x['reason']}\n" for x in r["rejected"])
+                    + _queue_text(r["queue"]) + f"\n周报：{r['reports']['markdown']}")
+    except ConfigError as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    except EvolveError as e:
+        _emit({"ok": False, "status": "REFUSED", "error": e.code, "message": str(e)}, args.json, f"拒绝：{e}")
+        return 1
+    except (runner.ReplayRefused, splits.SplitError) as e:
+        _emit({"ok": False, "status": "REFUSED", "error": type(e).__name__, "message": str(e)}, args.json, f"拒绝：{e}")
+        return 1
+    _emit(r, args.json, text + tail)
+    return 0
+
+
+def _queue_text(ranked: list[dict]) -> str:
+    if not ranked:
+        return "队列为空。"
+    return "队列：" + "；".join(
+        f"{q['rank']}. {q['candidate_id']}（{q['eval_track']}，"
+        + ("未估计" if q["score"] is None else f"分数 {q['score']:.4f}，日差 {q['effect']['mean_diff_per_day']:+.4f} R")
+        + "）" for q in ranked)
 
 
 def _baseline(args, settings, con, scope, registry) -> int:

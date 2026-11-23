@@ -101,19 +101,49 @@
             "maxLength": 120
           },
           "from": {
-            "type": [
-              "string",
-              "number",
-              "boolean",
-              "null"
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
             ]
           },
           "to": {
-            "type": [
-              "string",
-              "number",
-              "boolean",
-              "null"
+            "anyOf": [
+              {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "null"
+                ]
+              },
+              {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
             ]
           }
         },
