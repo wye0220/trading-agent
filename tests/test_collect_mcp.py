@@ -122,3 +122,30 @@ def test_mcp_request_prints_active_contracts_without_writing(env, capsys):
     assert es.startswith("ES") and nq.startswith("NQ") and len(es) == 4 and es[2:] == nq[2:]
     assert r["start_time"].endswith(".000Z") and sessions.parse_utc(r["start_time"]) % 300 == 0
     assert not (env.root / "webull").exists() and env.count() == 0
+
+
+def test_check_day_reports_completeness(env, capsys):
+    full = sessions.expected_rth_slots(D)
+    f = dump(env.tmp / "full.json", [entry("ESZ5", full), entry("NQZ5", full[:-1], 25000)])
+    run(env, capsys, "--from-mcp", f, "--fetched-at", sessions.iso(H.et(D, 17, 5)))
+    code, r = run(env, capsys, "--check-day", D.isoformat())
+    by = {x["instrument_root"]: x for x in r["results"]}
+    assert code == 1 and not r["ok"] and by["ES"]["ok"] and by["ES"]["rth_missing"] == 0
+    assert by["NQ"]["rth_missing"] == 1 and not by["NQ"]["ok"] and by["NQ"]["contract_id"] == "NQZ2025"
+    code, r = run(env, capsys, "--check-day", "2025-11-27")           # 感恩节：不是交易日，不需要数据
+    assert code == 0 and r["is_trading_day"] is False
+    code, r = run(env, capsys, "--check-day", "nope")
+    assert code == 2
+
+
+def test_ops_scripts_are_read_only_and_keep_secrets_out():
+    ops = H.PROJECT / "ops"
+    run_sh = (ops / "launchd" / "run-collect-mcp.sh").read_text(encoding="utf-8")
+    notify = (ops / "notify-telegram.sh").read_text(encoding="utf-8")
+    allowed = run_sh.split("--allowedTools", 1)[1].split("--model", 1)[0]
+    assert "get_futures_bars" in allowed and "collect --from-mcp" in allowed
+    for banned in ("place_", "revoke_", "cancel", "order", "Write", "Edit", "Bash(*)", "dangerously"):
+        assert banned not in allowed, banned                     # 无人值守时只允许取 K 线和落盘
+    assert "--check-day" in run_sh and "notify" in run_sh        # 结果独立核对，失败时通知
+    assert "source " not in notify and "echo \"$token" not in notify and "--form-string" in notify
+    assert not __import__("re").search(r"\d{6,}:[A-Za-z0-9_-]{20,}", run_sh + notify)      # 没有写死的 token

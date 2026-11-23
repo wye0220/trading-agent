@@ -51,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--from-mcp", metavar="JSON",
                             help="读 Webull MCP 连接器 get_futures_bars 返回的 JSON 文件（文件里有几个已登记的品种就存几个）")
             sp.add_argument("--fetched-at", metavar="ISO8601", help="该文件的取数时刻（UTC）。缺省用文件的修改时间")
+            sp.add_argument("--check-day", metavar="YYYY-MM-DD",
+                            help="只检查该交易日 ES、NQ 的已存文件是否覆盖了全部 RTH 5 分钟线（不取数、不写数据）")
             sp.add_argument("--mcp-request", action="store_true",
                             help="只打印此刻该向 Webull MCP 连接器请求的合约代码和起始时刻（不取数、不写数据）")
         if name == "scan":
@@ -162,6 +164,41 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
         if args.command == "baseline":
             return _baseline(args, settings, con, scope, registry)
+
+        if args.command == "collect" and args.check_day:
+            import csv as _csv
+
+            from . import contracts
+            from .collect import csv_path
+            try:
+                day = date.fromisoformat(args.check_day)
+            except ValueError:
+                _emit({"ok": False, "error": "CONFIG", "message": f"不是合法日期：{args.check_day}"}, args.json,
+                      f"错误：不是合法日期：{args.check_day}")
+                return 2
+            if not sessions.is_trading_day(day):
+                _emit({"ok": True, "trading_day": args.check_day, "is_trading_day": False, "results": []}, args.json,
+                      f"{args.check_day} 不是交易日，不需要数据。")
+                return 0
+            expected = {sessions.iso(s) for s in sessions.expected_rth_slots(day)}
+            results = []
+            for root in [r for r in settings.collect.get("mcp_roots", ["ES", "NQ"]) if r in settings.instruments]:
+                cid = contracts.active_contract(settings.instrument(root), day, settings.roll_rules)
+                path = csv_path(settings, root, cid, day.isoformat())
+                have, rows = set(), 0
+                if path.is_file():
+                    with open(path, encoding="utf-8", newline="") as f:
+                        for r in _csv.DictReader(f):
+                            rows += 1
+                            have.add(r["bar_start_utc"])
+                missing = len(expected - have)
+                results.append({"instrument_root": root, "contract_id": cid, "file": str(path), "rows": rows,
+                                "rth_expected": len(expected), "rth_missing": missing, "ok": missing == 0})
+            ok = all(r["ok"] for r in results)
+            _emit({"ok": ok, "trading_day": args.check_day, "is_trading_day": True, "results": results}, args.json,
+                  "\n".join(f"{r['instrument_root']} {r['contract_id']}：{r['rows']} 行，RTH 缺 {r['rth_missing']}/{r['rth_expected']} 根"
+                            + ("" if r["ok"] else "  ← 不完整") for r in results))
+            return 0 if ok else 1
 
         if args.command == "collect" and args.mcp_request:
             import time as _time

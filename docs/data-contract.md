@@ -311,8 +311,27 @@ uv run python -m trading_agent collect --from-mcp <JSON 文件>   # 文件里有
 
 **与开发可见截止日的关系**：这些数据都晚于 2024-12-31，所以 CSV 照存，但价格不进运行库，运行库里只有覆盖和内容摘要。它们留给以后的评测和影子期使用。2026-09-05 至 2026-11-19 之间没有数据（Databento 文件到 09-04 为止）。
 
+### 每日定时（流水任务）
+
+2026-11-23 经用户要求安装了系统定时任务 `com.wenye.trading-agent-collect`（`~/Library/LaunchAgents/`，源文件在 `ops/launchd/`）：周一到周五 17:12（纽约时间，CME 收盘后）运行 `ops/launchd/run-collect-mcp.sh`。
+
+1. 不是交易日就安静退出。
+2. 用 `claude -p` 无人值守地调起 Claude Code。允许它用的工具只有三个：工具检索、取期货 K 线的连接器、`collect --from-mcp` 命令。
+3. 脚本自己用 `collect --check-day` 核对当天 ES、NQ 的文件是否覆盖了全部 RTH 5 分钟线，不依赖 Claude 的说法。
+4. 核对不过就发 Telegram（`ops/notify-telegram.sh`），说明是 Claude Code 没跑成功（多半是登录或连接器授权失效）、连接器不可用，还是数据不完整。Telegram 发不出去时退回 macOS 本机通知。
+
+日志在 `<data_root>/logs/collect-mcp/<交易日>.log`。Telegram 凭证复用 `~/trading-desk/.env` 里的机器人（用户同意），脚本只解析 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 两个键；也可以另放在 `~/trading-agent-data/secrets/telegram.env`。
+
+```bash
+./ops/launchd/run-collect-mcp.sh                # 手工跑一次（核对今天）
+launchctl print gui/$(id -u)/com.wenye.trading-agent-collect | head
+launchctl bootout gui/$(id -u)/com.wenye.trading-agent-collect      # 停用
+```
+
 **限制**：
 
-- 需要一个开着的 Claude 会话来触发。会话内的定时任务只在会话空闲时触发，会话关闭即失效，最长 30 天。漏掉的日子靠回看补：每次请求回看 2 个交易日，单次上限 1200 根（约 4 个交易日）。
+- 提醒只在任务跑起来之后才会发。电脑关机时任务不会跑，也就不会提醒；睡眠中错过的那一次，launchd 会在唤醒后补跑。
+- 漏掉的日子靠回看补：每次请求回看 2 个交易日，单次上限 1200 根（约 4 个交易日）。
+- 采集时运行库被别的进程占用，入库那一步会失败，但 CSV 已经存好，下一次 `ingest` 会补上。
 - 更早的历史补不回来：连接器只按当前合约代码取数，换月之前的合约要单独请求。
 - NQ 只是存数据。NQ 的 scope 没有启用，也没有基线。
