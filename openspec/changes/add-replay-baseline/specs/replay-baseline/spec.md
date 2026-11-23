@@ -12,7 +12,7 @@
 - **THEN** 命令拒绝运行并说明原因，不写任何账本
 
 ### Requirement: 基线冻结清单
-系统 SHALL 按四维 scope 冻结基线，清单包含 git commit 及工作区是否干净、`strategy_family`、策略版本与配置摘要、已启用形态、指标定义、提示词摘要、行情清单（逐日的来源、实际合约、条数和含 revision 的内容摘要）、时段、费用与滑点、引擎版本、风控版本和随机种子。`baseline_id` SHALL 由清单内容的摘要得出。
+系统 SHALL 按四维 scope 冻结基线，清单包含 `strategy_family`、策略版本与配置摘要、已启用形态、指标定义、提示词摘要、行情清单（逐日的来源、实际合约和含 revision 的内容摘要）、时段、费用与滑点、引擎版本、风控版本、随机种子，以及决定回放结果的源文件的摘要。`baseline_id` SHALL 由这些内容的摘要得出。git commit 和工作区是否干净 SHALL 随清单保存，但不参与 `baseline_id`。
 
 #### Scenario: 相同输入得到相同标识
 - **WHEN** 对同一份数据、配置和代码两次生成清单
@@ -21,6 +21,10 @@
 #### Scenario: 行情变化改变标识
 - **WHEN** 区间内任一根 K 线出现新的 revision
 - **THEN** 行情清单的摘要和 `baseline_id` 都改变
+
+#### Scenario: 工作区有未提交改动
+- **WHEN** 冻结时 git 工作区不干净
+- **THEN** 基线带 `DIRTY_WORKTREE` 标记
 
 #### Scenario: 策略家族各自建档
 - **WHEN** 为另一个策略家族的 scope 冻结基线

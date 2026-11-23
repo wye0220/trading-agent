@@ -21,6 +21,8 @@ def _variant_worker(args) -> dict:
     scope = parse_scope(scope_text, settings)
     cfg = load_research(settings.project_root)
     con = db.open_runtime(settings)
+    # 几个进程写同一个库：别的进程清理明细时一次删除可能持续十几秒，所以等锁的时间放宽到十分钟
+    con.execute("PRAGMA busy_timeout=600000")
     try:
         base = bl.get(con, baseline_id)
         reg = splits.build(settings, con, scope.instrument_root, cfg)
@@ -62,11 +64,17 @@ def run_baseline(settings: Settings, con: sqlite3.Connection, scope: Scope, regi
         return out
 
     dev_days = data["measured_days"]["development"]
+    if not dev_days:
+        out["power"] = None
+        out["power_note"] = "没有开发段（数据都在向前验证段），功效测算跳过"
+        log(out["power_note"])
+        return out
     kw = dict(risk_cfg=risk_cfg, engine_cfg=engine_cfg, allow_real_data=allow_real_data)
     if jobs > 1 and len(perts) > 1:
         args = [(str(settings.project_root), str(settings.data_root), str(settings.release_db),
                  settings.dev_visible_through, str(scope), base["baseline_id"], p.id, allow_real_data) for p in perts]
         log(f"并行回放 {len(perts)} 个扰动（{jobs} 个进程）")
+        con.execute("PRAGMA busy_timeout=600000")
         with ProcessPoolExecutor(max_workers=jobs) as ex:
             list(ex.map(_variant_worker, args))
     variants = []

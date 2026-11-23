@@ -264,6 +264,8 @@ def _baseline(args, settings, con, scope, registry) -> int:
              f"切分：胶囊 {r['splits']['capsules']} 个，按默认流程可评测 {r['splits']['candidates_supported']} 个候选。"]
     if r["power"]:
         lines.append("短窗正式资格：" + "；".join(f"{k} {v['eligibility']}" for k, v in r["power"].items()))
+    if r.get("power_note"):
+        lines.append(r["power_note"])
     lines += [f"报告：{v}" for k, v in r["reports"].items() if k in ("baseline", "power")]
     lines.append("这是纸面模拟，不是投资建议。")
     _emit(r, args.json, "\n".join(lines))

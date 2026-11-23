@@ -10,7 +10,8 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | 2 策略插件接口与 PA v1.0 | 完成（策略还没有接进 `scan`，也没有在真实数据上运行过） | `docs/strategy-spec.md` |
 | 3 引擎核心 | 完成（成交模型、风控、逐步运行器；还没有命令行入口，也没有在真实数据上运行过） | `docs/engine.md` |
 | 4 scan、plan、watch 与人工成交导入 | 完成（没有实时行情和真实券商接口，盘中功能如实报告没有数据） | `docs/scan-plan-watch.md` |
-| 5 回放与基线及以后 | 未开始 | — |
+| 5 回放与基线 | 完成（基线在 2019-09-05 至 2024-12-31 的真实 ES 数据上冻结；之后的数据封存） | `docs/replay-baseline.md` |
+| 6A 日复盘及以后 | 未开始 | — |
 
 ## 环境
 
@@ -40,7 +41,7 @@ uv run pytest                 # 单元测试，全部用合成数据
 # 导入数据根目录里新增或变化的内容，并生成 reports/data_availability.md
 uv run python -m trading_agent ingest
 uv run python -m trading_agent ingest --json
-uv run python -m trading_agent ingest --through 2025-12-31    # 晚于该交易日的 K 线不进运行库
+uv run python -m trading_agent ingest --through 2024-12-31    # 晚于该交易日的 K 线不进运行库（缺省取 config/paths.yaml）；库里已有的会被移出
 uv run python -m trading_agent ingest --rebuild               # 改了换月规则等配置后：从原始 K 线重算派生数据和交易日状态
 
 # 数据校验后运行策略和纸面账本，输出中文短报
@@ -60,13 +61,20 @@ uv run python -m trading_agent watch --account U123 --interval 300
 # 导入人工成交和订单事件
 uv run python -m trading_agent ingest --trades trades.csv --order-events orders.csv
 
+# 回放一段日期（真实数据要显式允许，且不得晚于开发可见截止日）
+uv run python -m trading_agent replay --from 2024-01-02 --to 2024-01-31 --allow-real-data
+
+# 冻结基线：登记切分、回放两次校验一致、出基线报告和功效测算（全量约一小时）
+uv run python -m trading_agent baseline --allow-real-data --jobs 4
+uv run python -m trading_agent baseline --allow-real-data --skip-power      # 只出基线报告
+
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect
 ```
 
 `--scope` 的格式是 `strategy_family:instrument_root:session_type:timeframe`，缺省 `pa_brooks:ES:RTH:5m`。
 
-其余子命令（`replay`、`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
+其余子命令（`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
 
 ## 实时采集（暂不可用）
 
