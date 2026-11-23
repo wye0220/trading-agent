@@ -109,3 +109,10 @@ active 指针和 `release_events` SHALL 存放在与运行库分开的发布数�
 #### Scenario: 升级已有的库
 - **WHEN** 在已有数据的运行库上执行 migration
 - **THEN** 新表出现，既有数据不变
+
+### Requirement: Memory 版本的 migration
+运行库 SHALL 通过编号 migration `0007_memory` 增加 `memory_versions`、`memory_head` 和 `memory_events`，不改动既有表的列。
+
+#### Scenario: 从旧库升级
+- **WHEN** 对只应用到 `0006_evolve` 的运行库执行 migrate
+- **THEN** 只应用 `0007_memory`，既有数据不变
