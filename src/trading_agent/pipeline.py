@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import days, derive
 from .config import Settings
-from .ingest import HOLDOUT_NOT_SET, ingest_files, new_run_id
+from .ingest import HOLDOUT_NOT_SET, enforce_cutoff, ingest_files, new_run_id
 
 
 def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | None = None, kind: str = "ingest",
@@ -22,6 +22,16 @@ def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | Non
                 (run_id, kind, started))
     con.commit()
     summary, touched = ingest_files(settings, con, run_id, cutoff)
+    moved = {"moved_after_cutoff": 0, "rows_deleted": 0}
+    last_days: set[tuple[str, str]] = set()
+    if cutoff:
+        # 截止日是后来才设的：库里已有的、晚于它的真实 K 线移到库外（只留覆盖和内容摘要）
+        moved = enforce_cutoff(settings, con, run_id, cutoff)
+        if moved["rows_deleted"]:
+            touched = {t for t in touched if t[2] <= cutoff.isoformat()}
+            last_days = {(r[0], r[1]) for r in con.execute(
+                "SELECT instrument_root, MAX(trading_day) FROM trading_days WHERE fixture = 0"
+                " GROUP BY instrument_root") if r[1]}
     if rebuild:
         # 换月规则等配置变化后：清空全部派生结果和交易日状态，从原始 K 线重算。原始 K 线不动。
         derive.clear_derived(con)
@@ -31,11 +41,11 @@ def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | Non
         con.commit()
         touched = derive.all_raw_keys(con)
     affected = derive.rebuild(con, settings, touched)
-    days.refresh(con, settings, affected)
+    days.refresh(con, settings, affected | last_days)
     days.refresh_quality(con)
     summary = {"ok": True, "run_id": run_id, "data_root": str(settings.data_root),
                "dev_visible_through": cutoff.isoformat() if cutoff else None,
-               "flags": [] if cutoff else [HOLDOUT_NOT_SET], **summary,
+               "flags": [] if cutoff else [HOLDOUT_NOT_SET], **summary, **moved,
                "rebuilt": rebuild, "trading_days_refreshed": len(affected), "seconds": None}
     if write_report:
         from . import report

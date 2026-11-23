@@ -22,7 +22,7 @@ def test_help_lists_all_subcommands(capsys):
         main(["--help"])
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert len(COMMANDS) == 14 and len(NOT_IMPL) == 9
+    assert len(COMMANDS) == 15 and len(NOT_IMPL) == 8
     for name in ("ingest", "collect", "scan", "plan", "watch", "replay", "review", "evolve", "evaluate", "shadow",
                  "release", "rollback", "freeze", "monitor"):
         assert f"\n    {name} " in out
@@ -119,6 +119,6 @@ def test_scan_with_no_data(env, capsys):
 def test_module_entry_point():
     import subprocess
     import sys
-    p = subprocess.run([sys.executable, "-m", "trading_agent", "replay"], capture_output=True, text=True, cwd=H.PROJECT)
+    p = subprocess.run([sys.executable, "-m", "trading_agent", "review"], capture_output=True, text=True, cwd=H.PROJECT)
     assert p.returncode == 3 and json.loads(p.stdout)["status"] == "NOT_IMPLEMENTED"
-    assert cli.COMMANDS["replay"] == 5
+    assert cli.COMMANDS["replay"] == 5 and cli.COMMANDS["review"] == "6A"

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 from datetime import date
 
@@ -12,15 +13,17 @@ from .config import DEFAULT_SCOPE, ConfigError, load_settings, parse_scope
 # 子命令 -> 负责实现它的阶段。阶段 1 实现 ingest、collect 和最小 scan。
 COMMANDS = {
     "ingest": 1, "collect": 1, "scan": 4,
-    "plan": 4, "watch": 4, "replay": 5, "review": "6A", "evolve": "6B",
+    "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
     "scan": "数据校验后运行策略和纸面账本，输出 JSON 和中文短报",
-    "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒", "replay": "回放与基线",
+    "plan": "人工交易前登记与预检（只给结论，不下单）", "watch": "盘中只读纪律提醒",
+    "replay": "在一段日期上回放策略和纸面账本（与 scan 共用同一个引擎）",
+    "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
     "review": "日复盘", "evolve": "聚合演化与候选台账", "evaluate": "独立评测",
     "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
 }
@@ -59,6 +62,16 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--account", help="账户标识")
             sp.add_argument("--once", action="store_true", help="只评估一次就退出")
             sp.add_argument("--interval", type=int, metavar="秒", help="轮询间隔（缺省取 config/watch.yaml，常用 60 或 300）")
+        if name == "replay":
+            sp.add_argument("--from", dest="start", metavar="YYYY-MM-DD", help="回放起始交易日")
+            sp.add_argument("--to", dest="end", metavar="YYYY-MM-DD", help="回放结束交易日")
+            sp.add_argument("--run-id", help="运行标识（缺省自动生成）")
+        if name in ("replay", "baseline"):
+            sp.add_argument("--allow-real-data", action="store_true",
+                            help="允许在真实数据上运行（还需要已设置开发可见截止日，且区间不晚于它）")
+        if name == "baseline":
+            sp.add_argument("--skip-power", action="store_true", help="只冻结基线和出基线报告，不跑扰动和功效测算")
+            sp.add_argument("--jobs", type=int, default=1, metavar="N", help="并行回放扰动的进程数（缺省 1）")
         if name not in IMPLEMENTED:
             sp.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     return p
@@ -130,12 +143,19 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
                     f"不支持 {s['files_unsupported']} 个，拒收 {s['files_rejected']} 个；新增 K 线 {s['bars_inserted']:,}，"
                     f"新 revision {s['revisions_added']:,}，跳过重复 {s['duplicates_skipped']:,}；"
                     f"丢弃价差代码 {s['spread_symbols_dropped']} 个、记录 {s['spread_records_dropped']:,} 条；"
-                    f"截止日之后未入库 {s['withheld_after_cutoff']:,} 条。"
+                    f"截止日之后未入库 {s['withheld_after_cutoff']:,} 条"
+                    + (f"，从运行库移出 {s['moved_after_cutoff']:,} 条" if s["moved_after_cutoff"] else "") + "。"
                     + (f"\n异常：{s['anomalies']}" if s["anomalies"] else "")
                     + ("\n标记：" + "、".join(s["flags"]) if s["flags"] else "")
                     + (f"\n报告：{s['report']}" if s.get("report") else ""))
             _emit(s, args.json, text)
             return 0
+
+        if args.command == "replay":
+            return _replay(args, settings, con, scope, registry)
+
+        if args.command == "baseline":
+            return _baseline(args, settings, con, scope, registry)
 
         if args.command == "collect":
             from .collect import run_collect
@@ -180,6 +200,74 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
     finally:
         con.close()
     return 2
+
+
+def _registry(registry):
+    if registry is not None:
+        return registry
+    from .strategies.registry import default_registry
+    return default_registry()
+
+
+def _replay(args, settings, con, scope, registry) -> int:
+    from .engine import runner
+    try:
+        if not args.start or not args.end:
+            raise ValueError("需要 --from 和 --to")
+        start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
+        if end < start:
+            raise ValueError("--to 不能早于 --from")
+    except ValueError as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    try:
+        strategy = _registry(registry).get(scope.strategy_family)
+        r = runner.replay(settings, con, scope, strategy, start, end, run_id=args.run_id,
+                          allow_real_data=args.allow_real_data)
+    except runner.ReplayRefused as e:
+        _emit({"ok": False, "status": "REFUSED", "error": "REAL_DATA_BOUNDARY", "message": str(e)}, args.json, f"拒绝：{e}")
+        return 1
+    except (sqlite3.IntegrityError, runner.ClockError) as e:
+        _emit({"ok": False, "status": "ERROR", "error": "RUN", "message": str(e)}, args.json, f"错误：{e}")
+        return 1
+    tag = " [FIXTURE]" if r["run_mode"] == "fixture" else ""
+    _emit({"ok": True, **r}, args.json,
+          f"回放完成{tag}（{r['run_id']}）：{r['days']} 个交易日，{r['steps']:,} 步，机会 {r['setups']}，"
+          f"订单 {r['orders']}，交易 {r['trades']}，合计 {r['pnl_ticks']} tick。\n这是纸面模拟，不是投资建议。")
+    return 0
+
+
+def _baseline(args, settings, con, scope, registry) -> int:
+    from .engine import runner
+    from .research import baseline as bl
+    from .research import splits
+    from .research.run import run_baseline
+    log = (lambda m: None) if args.json else (lambda m: print(m, file=sys.stderr, flush=True))
+    try:
+        if args.jobs < 1:
+            raise ConfigError("--jobs 应为正整数")
+        r = run_baseline(settings, con, scope, _registry(registry), allow_real_data=args.allow_real_data,
+                         skip_power=args.skip_power, jobs=args.jobs if registry is None else 1, log=log)
+    except ConfigError as e:
+        _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
+        return 2
+    except (runner.ReplayRefused, splits.SplitError, bl.BaselineError) as e:
+        _emit({"ok": False, "status": "REFUSED", "error": type(e).__name__, "message": str(e)}, args.json, f"拒绝：{e}")
+        return 1
+    t = r["total"]
+    num = lambda x, nd=3: "—" if x is None else f"{float(x):.{nd}f}"       # noqa: E731
+    lines = [f"基线 {r['baseline_id']}：{r['status']}" + ("（复用已冻结的结果）" if r["reused"] else "")
+             + ("  [FIXTURE_ONLY]" if "FIXTURE_ONLY" in r["flags"] else ""),
+             f"合计：{t['days']} 个有效交易日，{t['trades']} 笔交易，净盈亏 ${float(t['net_usd']):,.2f}，"
+             f"净 R／日 {num(t['net_r_per_day'], 4)}，胜率 {num(t['win_rate'], 3)}，"
+             f"PF {'不可估' if t['profit_factor'] is None else num(t['profit_factor'], 2)}。",
+             f"切分：胶囊 {r['splits']['capsules']} 个，按默认流程可评测 {r['splits']['candidates_supported']} 个候选。"]
+    if r["power"]:
+        lines.append("短窗正式资格：" + "；".join(f"{k} {v['eligibility']}" for k, v in r["power"].items()))
+    lines += [f"报告：{v}" for k, v in r["reports"].items() if k in ("baseline", "power")]
+    lines.append("这是纸面模拟，不是投资建议。")
+    _emit(r, args.json, "\n".join(lines))
+    return 0 if r["ok"] else 1
 
 
 def _account(args, manual_cfg) -> str | None:
