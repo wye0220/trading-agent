@@ -4,7 +4,7 @@
 
 来源：`trading_agent_v2_6_pa.md` 的 Prompt 0。详细规格按阶段写在 `docs/` 下。
 
-本项目的补充约定：行情来源为 Databento 历史文件；实时采集（`collect`）暂不可用（Webull 账号没有期货行情，来源待定），数据根目录在项目之外（默认 `~/trading-agent-data/`，见 `config/paths.yaml` 和 `docs/data-contract.md`）。开发可见截止日为 2024-12-31：晚于它的 K 线不进运行库，不得在其上运行策略或查看结果（见 `docs/replay-baseline.md`）。每日采集走 Webull MCP 连接器加系统定时任务 `com.wenye.trading-agent-collect`（见 `docs/data-contract.md`）。不读取、不依赖 `~/trading-desk`；唯一的例外是 `ops/notify-telegram.sh` 引用它 `.env` 里的 Telegram 凭证（用户同意）。环境用 `uv`（Python 3.12）：`uv sync`、`uv run pytest`、`uv run python -m trading_agent ...`。
+本项目的补充约定：行情来源为 Databento 历史文件；实时采集（`collect`）暂不可用（Webull 账号没有期货行情，来源待定），数据根目录在项目之外（默认 `~/trading-agent-data/`，见 `config/paths.yaml` 和 `docs/data-contract.md`）。开发可见截止日为 2024-12-31：晚于它的 K 线不进运行库，不得在其上运行策略或查看结果（见 `docs/replay-baseline.md`）。每日采集走 Webull MCP 连接器加系统定时任务 `com.wenye.trading-agent-collect`（见 `docs/data-contract.md`）。人工轨的默认账户是 Alpaca 模拟盘 `alpaca-paper`，交易 SPY、QQQ；它们只进人工纪律轨，策略轨仍只有 ES（见 `docs/scan-plan-watch.md` 第八节）。Alpaca 只读，不调用任何下单接口。不读取、不依赖 `~/trading-desk`；唯一的例外是 `ops/notify-telegram.sh` 引用它 `.env` 里的 Telegram 凭证（用户同意）。环境用 `uv`（Python 3.12）：`uv sync`、`uv run pytest`、`uv run python -m trading_agent ...`。
 
 你是我的 trading-agent 工程搭档。用中文交付，代码、字段名和命令用英文。把本段写入项目根目录 CLAUDE.md。
 阶段专用规格按任务读取 docs/ 下对应文件。阶段 1 创建 docs/glossary.md 后，在本文件顶部加入 @docs/glossary.md 引用。

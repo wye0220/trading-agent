@@ -14,6 +14,7 @@ from ..config import ConfigError, Scope, Settings
 from ..engine import llm, risk as risk_mod, versions
 from ..engine.config import RiskConfig
 from ..strategies.base import TraderPlan
+from . import common
 from .common import last_closed, strategy_view
 from .config import ManualConfig
 
@@ -74,7 +75,7 @@ def parse_quick(tokens: list[str], settings: Settings, today: date) -> PlanInput
         raise PlanError("止损在入场的错误一侧")
     if target is not None and d * (target - entry) <= 0:
         raise PlanError("目标在入场的错误一侧")
-    cid = contracts.active_contract(inst, today, settings.roll_rules)
+    cid = common.active_contract(settings, inst, today)
     return PlanInput(root, cid, side, entry, stop, target, qty, " ".join(tokens[6:]).strip())
 
 
@@ -138,7 +139,13 @@ def precheck(settings: Settings, con: sqlite3.Connection, *, plan_id: str, accou
     flags: list[str] = []
     setup_id = None
     conditions: list[str] = []
-    if view is None:
+    no_strategy = common.is_equity(settings, inst)
+    if no_strategy:
+        # 股票类品种没有正式策略和基线：不拿别的品种的信号去套，只评价计划纪律和账户风险
+        view = None
+        alignment, align_ev = "UNKNOWN", {"why": "该品种没有正式策略 scope，不评价策略一致性"}
+        conditions.append("该品种没有正式策略，只评价计划纪律和账户风险")
+    elif view is None:
         alignment, align_ev = "UNKNOWN", {"why": "该 scope 没有可用的策略状态（纸面运行不存在或已过期）"}
         conditions.append("策略状态不可用，无法判断与策略是否一致")
     else:
@@ -172,8 +179,9 @@ def precheck(settings: Settings, con: sqlite3.Connection, *, plan_id: str, accou
     conclusion = "BLOCKED_BY_RISK" if not dec.passed else ("ALIGNED" if alignment == "ALIGNED" else "DEVIATES")
     tick = inst.tick_size
     px = lambda t: "无" if t is None else str(t * tick)       # noqa: E731
-    summary = (f"{inp.contract_id} {'做多' if inp.side == 'LONG' else '做空'} {inp.quantity} 手，入场 {px(inp.entry_ticks)}，"
-               f"止损 {px(inp.stop_ticks)}，目标 {px(inp.target_ticks)}。结论 {conclusion}：策略一致性 {alignment}，"
+    summary = (f"{inp.contract_id} {'做多' if inp.side == 'LONG' else '做空'} {inp.quantity} {common.unit(settings, inst)}，入场 {px(inp.entry_ticks)}，"
+               f"止损 {px(inp.stop_ticks)}，目标 {px(inp.target_ticks)}。结论 {conclusion}：策略一致性 {alignment}"
+               + ("（该品种没有正式策略，不评价）" if no_strategy else "") + "，"
                f"账户风险 {dec.status}" + (f"（{dec.reason_code}）" if dec.reason_code else "")
                + ("；纪律标记 " + "、".join(flags) if flags else "") + "。预检只给结论，不下单。")
     check = {
@@ -216,8 +224,8 @@ def create(settings: Settings, con: sqlite3.Connection, *, account_id: str, scop
             "expires_at_utc": sessions.iso(expires), "reserved": False, **pre}
 
 
-def _input_of(plan: sqlite3.Row) -> PlanInput:
-    return PlanInput(contracts.parse(plan["contract_id"])[0], plan["contract_id"], plan["side"], plan["entry_ticks"],
+def _input_of(settings: Settings, plan: sqlite3.Row) -> PlanInput:
+    return PlanInput(common.instrument_of(settings, plan["contract_id"]).root, plan["contract_id"], plan["side"], plan["entry_ticks"],
                      plan["stop_ticks"], plan["target_ticks"], plan["quantity"], plan["reason"] or "")
 
 
@@ -230,7 +238,7 @@ def activate(settings: Settings, con: sqlite3.Connection, plan_id: str, *, scope
     plan = get(con, plan_id)
     if plan["status"] != "DRAFT":
         raise PlanError(f"只有 DRAFT 的计划能激活：{plan_id} 现在是 {plan['status']}")
-    inp = _input_of(plan)
+    inp = _input_of(settings, plan)
     pre = precheck(settings, con, plan_id=plan_id, account_id=plan["account_id"], scope=scope, strategy=strategy,
                    inp=inp, risk_cfg=risk_cfg, manual_cfg=manual_cfg, now_utc=now, snapshot_fetched_at=snapshot_fetched_at)
     out = {"plan_id": plan_id, "account_id": plan["account_id"], "contract_id": plan["contract_id"], **pre}

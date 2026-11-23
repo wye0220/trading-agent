@@ -45,6 +45,9 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--no-report", action="store_true", help="不生成数据可得性报告")
             sp.add_argument("--trades", metavar="CSV", help="导入人工成交文件（不扫描行情目录）")
             sp.add_argument("--order-events", metavar="CSV", help="导入订单生命周期事件文件（建议与 --trades 一起给）")
+            sp.add_argument("--alpaca", action="store_true",
+                            help="从 Alpaca 模拟盘读取订单记录和成交并导入（只读；账户取 --account 或默认账户）")
+            sp.add_argument("--account", help="--alpaca 时的账户标识")
             sp.add_argument("--rebuild", action="store_true",
                             help="清空派生数据和交易日状态后从原始 K 线重算（改了换月规则等配置后使用）")
         if name == "collect":
@@ -114,6 +117,29 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
     con = db.open_runtime(settings)
     try:
+        if args.command == "ingest" and args.alpaca:
+            from .manual import alpaca as alpaca_mod
+            from .manual.broker import BrokerReadError
+            from .manual.config import load_manual, risk_for_account
+            manual_cfg = load_manual(settings.project_root)
+            account = args.account or manual_cfg.default_account_id
+            if not account:
+                _emit({"ok": False, "status": "ERROR", "error": "CONFIG", "message": "没有账户标识"}, args.json,
+                      "错误：没有账户标识：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
+                return 2
+            try:
+                out = alpaca_mod.sync(settings, con, adapter or alpaca_mod.adapter_for(settings, account), account,
+                                      risk_cfg=risk_for_account(settings.project_root, account), manual_cfg=manual_cfg)
+            except BrokerReadError as e:
+                _emit({"ok": False, "status": "ERROR", "error": "BROKER_READ", "message": str(e)}, args.json, f"读取失败：{e}")
+                return 1
+            ev, tr = out["results"]
+            _emit({"ok": True, **out}, args.json,
+                  f"Alpaca {account}：订单事件导入 {ev['imported']}、跳过 {ev['skipped']}；成交导入 {tr['imported']}、"
+                  f"跳过 {tr['skipped']}、隔离 {tr.get('quarantined', 0)}、无法解析 {tr['bad_rows']}"
+                  + (f"；忽略未登记的代码 {sorted(out['ignored_symbols'])}" if out["ignored_symbols"] else "") + "。")
+            return 0
+
         if args.command == "ingest" and (args.trades or args.order_events):
             from .engine.config import load_risk
             from .manual import trades as trades_mod
@@ -388,17 +414,21 @@ def _plan(args, settings, con, scope, registry) -> int:
     from .manual.config import load_manual
     from .strategies.registry import default_registry
 
+    from .manual import common
+    from .manual.config import risk_for_account
     manual_cfg, risk_cfg = load_manual(settings.project_root), load_risk(settings.project_root)
     strategy = (registry or default_registry()).get(scope.strategy_family)
     now = int(time.time())
-    tick = settings.instrument(scope.instrument_root).tick_size
-    px = lambda t: "无" if t is None else str(t * tick)       # noqa: E731
+
+    def px(t, cid):                                   # 每份计划按它自己品种的 tick 显示价格
+        return "无" if t is None else str(t * common.instrument_of(settings, cid).tick_size)
     try:
         if args.list:
             plans.expire_due(con, now)
             rows = plans.list_plans(con, args.account)
-            text = "\n".join(f"{r['plan_id']}  {r['status']:<16} {r['contract_id']} {r['side']} {r['quantity']} 手  "
-                             f"入场 {px(r['entry_ticks'])} 止损 {px(r['stop_ticks'])} 目标 {px(r['target_ticks'])}  "
+            text = "\n".join(f"{r['plan_id']}  {r['status']:<16} {r['contract_id']} {r['side']} {r['quantity']}  "
+                             f"入场 {px(r['entry_ticks'], r['contract_id'])} 止损 {px(r['stop_ticks'], r['contract_id'])} "
+                             f"目标 {px(r['target_ticks'], r['contract_id'])}  "
                              f"{r['conclusion'] or ''}" for r in rows) or "没有计划。"
             _emit({"plans": rows}, args.json, text)
             return 0
@@ -408,7 +438,9 @@ def _plan(args, settings, con, scope, registry) -> int:
             return 0
         if args.activate:
             p = plans.get(con, args.activate)
-            r = plans.activate(settings, con, args.activate, scope=scope, strategy=strategy, risk_cfg=risk_cfg,
+            _refresh_snapshot(settings, con, p["account_id"], scope, strategy, manual_cfg)
+            r = plans.activate(settings, con, args.activate, scope=scope, strategy=strategy,
+                               risk_cfg=risk_for_account(settings.project_root, p["account_id"], base=risk_cfg),
                                manual_cfg=manual_cfg, now_utc=now,
                                snapshot_fetched_at=_snapshot_time(con, p["account_id"]))
             text = (f"{r['plan_id']} 已激活，已预留风险预算。" if r["status"] == "ACTIVE" else
@@ -422,7 +454,9 @@ def _plan(args, settings, con, scope, registry) -> int:
         if inp.instrument_root != scope.instrument_root:
             scope = parse_scope(f"{scope.strategy_family}:{inp.instrument_root}:{scope.session_type}:{scope.timeframe}",
                                 settings)
-        r = plans.create(settings, con, account_id=account, scope=scope, strategy=strategy, inp=inp, risk_cfg=risk_cfg,
+        _refresh_snapshot(settings, con, account, scope, strategy, manual_cfg)
+        r = plans.create(settings, con, account_id=account, scope=scope, strategy=strategy, inp=inp,
+                         risk_cfg=risk_for_account(settings.project_root, account, base=risk_cfg),
                          manual_cfg=manual_cfg, now_utc=now, snapshot_fetched_at=_snapshot_time(con, account))
         text = (f"计划 {r['plan_id']}（DRAFT，未预留预算）：{inp.instrument_root} 解析为实际合约 {r['contract_id']}。\n"
                 f"{r['check']['summary']}\n激活：python -m trading_agent plan --activate {r['plan_id']}")
@@ -431,6 +465,30 @@ def _plan(args, settings, con, scope, registry) -> int:
     except (plans.PlanError, ConfigError) as e:
         _emit({"status": "ERROR", "error": "PLAN", "message": str(e)}, args.json, f"错误：{e}")
         return 2
+
+
+def _broker_adapter(settings, account):
+    """按 config/accounts.yaml 里登记的券商选只读适配器。没登记的账户读快照文件。"""
+    from .manual.broker import FileSnapshotAdapter
+    from .manual.config import load_accounts
+    if (load_accounts(settings.project_root).get(account) or {}).get("broker") == "alpaca":
+        from .manual import alpaca as alpaca_mod
+        return alpaca_mod.adapter_for(settings, account)
+    return FileSnapshotAdapter(settings)
+
+
+def _refresh_snapshot(settings, con, account, scope, strategy, manual_cfg) -> None:
+    """登记或激活计划前，先读一次账户（只对登记了 Alpaca 的账户）。读不到不报错：预检会如实说账户状态未知。"""
+    from .manual import watch as watch_mod
+    from .manual.config import load_accounts, risk_for_account
+    if (load_accounts(settings.project_root).get(account) or {}).get("broker") != "alpaca":
+        return
+    try:
+        watch_mod.poll_once(settings, con, _broker_adapter(settings, account), account, scope=scope, strategy=strategy,
+                            risk_cfg=risk_for_account(settings.project_root, account), manual_cfg=manual_cfg,
+                            interval_seconds=settings.watch["poll_interval_seconds"])
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _watch(args, settings, con, scope, registry, adapter) -> int:
@@ -452,7 +510,9 @@ def _watch(args, settings, con, scope, registry, adapter) -> int:
         _emit({"status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
         return 2
     strategy = (registry or default_registry()).get(scope.strategy_family)
-    adapter = adapter or FileSnapshotAdapter(settings)
+    adapter = adapter or _broker_adapter(settings, account)
+    from .manual.config import risk_for_account
+    risk_cfg = risk_for_account(settings.project_root, account, base=risk_cfg)
 
     def poll():
         return watch_mod.poll_once(settings, con, adapter, account, scope=scope, strategy=strategy, risk_cfg=risk_cfg,

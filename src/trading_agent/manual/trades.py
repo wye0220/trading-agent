@@ -48,9 +48,8 @@ def _read(path: Path, required: tuple[str, ...]) -> list[dict]:
 
 
 def _contract(text: str, at_utc: int, settings: Settings):
-    cid = contracts.normalize(text.upper(), datetime.fromtimestamp(at_utc, timezone.utc).date())
-    root = contracts.parse(cid)[0]
-    return cid, settings.instrument(root)
+    from .common import resolve_contract
+    return resolve_contract(settings, text, datetime.fromtimestamp(at_utc, timezone.utc).date())
 
 
 def _day(at_utc: int) -> str:
@@ -160,6 +159,14 @@ def _link(con, account_id: str, cid: str, side: str, at_utc: int, plan_id: str |
 def import_trades(settings: Settings, con: sqlite3.Connection, path: Path, *, risk_cfg: RiskConfig,
                   manual_cfg: ManualConfig) -> dict:
     """导入人工成交。可选列：broker_order_id、broker_fill_id、plan_id。建议先导入订单事件。"""
+    from .config import risk_for_account
+    _rc: dict = {}
+
+    def rc(account: str):                             # 每个账户用它自己的费用和限额
+        if account not in _rc:
+            _rc[account] = risk_for_account(settings.project_root, account, base=risk_cfg)
+        return _rc[account]
+
     rows = _read(Path(path), TRADE_COLUMNS)
     counts: Counter = Counter()
     first_error = None
@@ -231,7 +238,7 @@ def import_trades(settings: Settings, con: sqlite3.Connection, path: Path, *, ri
                     first_open = first_open if first_open is not None else lot[3]
                 sd = 1 if side == "LONG" else -1
                 gross = sd * (p["price"] * close_qty - cost) * p["inst"].tick_value_usd
-                net = gross - risk_cfg.round_trip_fee_usd * close_qty
+                net = gross - rc(p["account"]).round_trip_fee_usd * close_qty
                 kind = order_kind(con, p["account"], p["order_id"])
                 tid = "mt_" + _h(p["key"], "CLOSE")[:24]
                 plan_ids = {x for x in lot_plans}
@@ -244,7 +251,7 @@ def import_trades(settings: Settings, con: sqlite3.Connection, path: Path, *, ri
                     (tid, p["account"], p["cid"], side, close_qty, p["price"], p["at"], p["order_id"], p["fill_id"],
                      plan_id, "LINKED" if plan_id else "UNKNOWN", p["source"], now, p["key"], day, p["rule"],
                      round(cost / close_qty), str(net), kind))
-                risk_mod.record_account_exit(con, risk_cfg, account_id=p["account"], trading_day=day, source_id=tid,
+                risk_mod.record_account_exit(con, rc(p["account"]), account_id=p["account"], trading_day=day, source_id=tid,
                                              exit_reason="STOP" if kind == "STOP" else "OTHER", net_usd=Decimal(net))
                 discipline.on_close(con, settings, manual_cfg, trade_id=tid, opened_at_utc=first_open)
                 counts["closes"] += 1

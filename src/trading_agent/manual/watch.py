@@ -15,6 +15,7 @@ from ..engine.config import RiskConfig
 from ..strategies.base import TraderPlan
 from . import plans
 from .broker import STOP_KINDS, AccountSnapshot, BrokerReadError, BrokerReadOnly
+from . import common
 from .common import strategy_view
 from .config import LEVELS, ManualConfig
 
@@ -157,9 +158,11 @@ def _evaluate(settings, con, snap: AccountSnapshot, sid: str, scope, strategy, r
         key = f"{acct}:{pos.contract_id}:{pos.side}"
         cur[key] = pos.quantity
         before = prev.get(key, 0)
-        tick = settings.instrument(pos.contract_id[:-5]).tick_size
+        inst = common.instrument_of(settings, pos.contract_id)
+        equity = common.is_equity(settings, inst)       # 股票类没有正式策略：不拿别的品种的策略状态来评价
+        tick = inst.tick_size
         px = lambda t: str(t * tick)          # noqa: E731
-        fact = f"{pos.contract_id} {'多' if pos.quantity > 0 else '空'}仓 {abs(pos.quantity)} 手"
+        fact = f"{pos.contract_id} {'多' if pos.quantity > 0 else '空'}仓 {abs(pos.quantity)} {common.unit(settings, inst)}"
         stop = _protective_stop(snap, pos)
 
         # NAKED_POSITION：持仓没有保护止损单，且超过宽限时间
@@ -208,7 +211,7 @@ def _evaluate(settings, con, snap: AccountSnapshot, sid: str, scope, strategy, r
                 " ORDER BY executed_at_utc DESC LIMIT 1", (acct, pos.contract_id, pos.side, now)).fetchone()
             if last is not None and now - last[0] <= cfg.cooldown_minutes * 60:
                 st = risk_mod.account_state(con, acct, day)
-                view = strategy_view(settings, con, scope, strategy, now, cfg.strategy_state_max_age_bars)
+                view = None if equity else strategy_view(settings, con, scope, strategy, now, cfg.strategy_state_max_age_bars)
                 new_setup = None
                 if view is not None:
                     sig = view[0].data.get("last_signal")
@@ -222,16 +225,17 @@ def _evaluate(settings, con, snap: AccountSnapshot, sid: str, scope, strategy, r
 
         # COUNTERTREND_ADD：加仓，而策略对这个方向的评估为逆势
         if on["COUNTERTREND_ADD"] and increased and not opened:
-            view = strategy_view(settings, con, scope, strategy, now, cfg.strategy_state_max_age_bars)
+            view = None if equity else strategy_view(settings, con, scope, strategy, now, cfg.strategy_state_max_age_bars)
             if view is None:
-                out["unknown"].append({"rule": "COUNTERTREND_ADD", "position_key": key, "why": "没有可用的策略状态"})
+                out["unknown"].append({"rule": "COUNTERTREND_ADD", "position_key": key,
+                                       "why": "该品种没有正式策略" if equity else "没有可用的策略状态"})
             else:
                 res = strategy.evaluate_pretrade_alignment(
                     view[1], view[0], TraderPlan(pos.side, pos.avg_price_ticks or 0, None, None, abs(pos.quantity),
                                                  pos.contract_id))
                 if res.alignment == "DEVIATES" and "COUNTERTREND_BEFORE_CONFIRMATION" in res.flags:
                     add(_alert(con, cfg, snap, sid, "COUNTERTREND_ADD", key,
-                               f"{fact}（由 {abs(before)} 手增加），而策略当前的结构与这个方向相反"
+                               f"{fact}（由 {abs(before)} {common.unit(settings, inst)}增加），而策略当前的结构与这个方向相反"
                                "（规则 COUNTERTREND_ADD）。", now, plan_id, evidence=dict(res.evidence)))
 
     # 已不存在的持仓：解除它们的提醒

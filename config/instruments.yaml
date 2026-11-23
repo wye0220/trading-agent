@@ -13,8 +13,16 @@ roll_rules:
     days_before_expiry: 6
     expiry: third_friday
 
+  none:
+    # 股票和 ETF：没有合约月，不换月。合约标识就是代码本身。
+    kind: none
+
 instruments:
   ES:  {point_value_usd: 50, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
   NQ:  {point_value_usd: 20, tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
   MES: {point_value_usd: 5,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
   MNQ: {point_value_usd: 2,  tick_size: "0.25", months: [H, M, U, Z], roll_rule_version: roll-v2, exchange: CME}
+  # 股票类：只用于人工交易轨（plan、watch、成交导入、纪律）。没有策略 scope、没有回放和基线。
+  # 价格单位 0.01 美元，数量是股数，每股每点 1 美元。
+  SPY: {point_value_usd: 1, tick_size: "0.01", months: [], roll_rule_version: none, exchange: ARCA}
+  QQQ: {point_value_usd: 1, tick_size: "0.01", months: [], roll_rule_version: none, exchange: NASDAQ}

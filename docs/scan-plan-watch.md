@@ -336,7 +336,48 @@ ESZ2025 多仓 1 手，已 61 秒没有对应的保护止损单（规则 NAKED_P
 
 ---
 
-## 八、假设
+## 八、股票类品种与 Alpaca 模拟盘（2026-11-23）
+
+人工轨现在也支持股票和 ETF。登记了 SPY、QQQ，默认账户是 Alpaca 模拟盘 `alpaca-paper`。
+
+**只进人工轨。** SPY、QQQ 没有策略 scope、没有回放、没有基线。正式策略只在 ES 上定义；不拿 ES 的信号去评价 SPY 或 QQQ 的交易。所以：
+
+- 预检的"策略一致性"对它们一律是 `UNKNOWN`，摘要里写明"该品种没有正式策略，不评价"。结论沿用既有规则：风险通过时为 `DEVIATES`。它在这里的意思是"无法确认与策略一致"，不是"你做错了"。
+- `watch` 里依赖策略状态的规则（逆势加仓、冷却期内是否有新 setup）对它们不评估，记入"无法评估"。
+- 纪律指标照常：计划覆盖率、无计划成交、止损后重试、提前出场、拖止损、放宽止损。
+
+**写法**与期货相同，数量是股数，价格精确到分：
+
+```bash
+uv run python -m trading_agent plan SPY L 700.50 699.00 705 100 回调买入
+uv run python -m trading_agent plan --activate plan_xxxxxxxxxxxx
+uv run python -m trading_agent watch --once
+uv run python -m trading_agent ingest --alpaca            # 导入 Alpaca 的订单记录和成交
+```
+
+每股计划风险 = 止损距离 + 滑点预算（2 tick，即 2 分钱），Alpaca 零佣金。上例是 1.50 + 0.02 = 1.52 美元，100 股共 152 美元。
+
+**账户限额**在 `config/accounts.yaml`，按账户分开，不写进 `config/risk.yaml`，所以不影响纸面评测的 `risk_version` 和基线。`alpaca-paper` 的限额（2026-11-23 用户确认，账户权益约 98,000 美元）：单笔预算 250 美元，日损上限 1,000 美元，最大 200 股，每日最多 2 次止损。没有登记的账户沿用 `risk.yaml` 的 `account` 一节。
+
+**读 Alpaca 账户**有两种方式，解析相同，都是只读：
+
+- 有 API 密钥（环境变量或项目根目录 `.env` 里的 `ALPACA_API_KEY`、`ALPACA_SECRET_KEY`）：直接读。只发 GET，只连模拟盘地址 `paper-api.alpaca.markets`。
+- 没有密钥：读 `<data_root>/broker/alpaca-paper/alpaca/` 下保存的 JSON：`positions.json`、`orders_open.json`、`orders_all.json`，可选 `fills.json`。在 Claude 会话里用 Alpaca 连接器取回后存下即可。
+
+`plan` 在登记和激活前会先读一次账户，因为预检要求账户状态足够新（默认 120 秒内）。
+
+**口径**：
+
+- 只处理已登记的代码。账户里别的股票和碎股忽略并计数。
+- 成交价和均价可能带到小数点后四位，按最近的一分钱取整。
+- 没有逐笔成交记录（`fills.json`）时，用订单记录里已成交的订单，一张订单算一笔，价格是订单的成交均价。
+- Alpaca 改单是"替换成一张新订单"。整条替换链记在最后那张订单的编号下：最初那张记为 `SUBMITTED`，之后每次替换记为 `MODIFIED`（带新价格）。"放宽止损"据此判定。
+- **计划关联的凭据是订单的 `client_order_id`**：里面含有计划编号（`plan_xxxxxxxxxxxx`）就算可证明的关联（`LINKED`）。否则只按时间吻合记为待核对（`UNKNOWN`），并给出建议的计划。计划覆盖率只数 `LINKED`。
+- 没有事前计划的成交只记 `UNPLANNED`；提前出场、拖止损、放宽止损都是相对计划而言，没有计划就不判。
+- 交易日按期货的口径切分（18:00 ET）。18:00 之后的盘后成交会记到下一个交易日。
+- 订单记录一次最多取 500 张。更早的成交不在其中时，最早的几笔平仓会找不到对应的开仓。
+
+## 九、假设
 
 1. **一致性 `UNKNOWN` 时结论给 `DEVIATES`**。偏保守。
 2. **历史 `scan` 用一次性的运行**，`run_id` 由 scope、时点、策略版本、风控版本决定，重复调用复用同一个运行。

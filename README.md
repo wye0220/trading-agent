@@ -58,6 +58,10 @@ uv run python -m trading_agent plan --list
 uv run python -m trading_agent watch --once --account U123
 uv run python -m trading_agent watch --account U123 --interval 300
 
+# 股票类（SPY、QQQ）走同样的命令，数量是股数；默认账户是 Alpaca 模拟盘
+uv run python -m trading_agent plan SPY L 700.50 699.00 705 100 回调买入
+uv run python -m trading_agent ingest --alpaca          # 只读导入 Alpaca 的订单记录和成交
+
 # 导入人工成交和订单事件
 uv run python -m trading_agent ingest --trades trades.csv --order-events orders.csv
 

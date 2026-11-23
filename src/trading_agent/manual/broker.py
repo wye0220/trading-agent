@@ -97,8 +97,8 @@ class FileSnapshotAdapter:
             day = datetime.fromtimestamp(at, timezone.utc).date()
 
             def cid(text):
-                c = contracts.normalize(str(text).upper(), day)
-                return c, self._settings.instrument(contracts.parse(c)[0])
+                from .common import resolve_contract
+                return resolve_contract(self._settings, text, day)
 
             positions = []
             for x in raw.get("positions") or []:

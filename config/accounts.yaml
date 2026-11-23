@@ -1,0 +1,13 @@
+# 账户：每个真实或模拟账户各自的限额、费用和券商。人工计划的预检、watch 和成交导入按账户取这里的设置。
+# 这里的限额只作用于人工轨；纸面策略评测固定 1 手，不受影响（也不改变 risk_version）。
+# 没有列在这里的账户沿用 config/risk.yaml 的 account 一节。
+accounts:
+  alpaca-paper:
+    broker: alpaca              # 只读适配器：alpaca | file_snapshot
+    approved: true              # 2026-11-23 用户确认采用以下参考值（账户权益约 $98,000）
+    budget_per_trade_usd: 250   # 单笔预算，约权益的 0.25%
+    daily_loss_limit_usd: 1000  # 日损上限，约权益的 1%
+    max_contracts: 200          # 最大数量（股）
+    max_stops_per_day: 2
+    fees: {mode: round_trip, amount_usd: 0}     # Alpaca 股票零佣金
+    slippage_budget_ticks: 2    # 每股计划风险里预留的滑点（tick = 0.01 美元）

@@ -44,6 +44,13 @@ def _neutral_project() -> Path:
     edit("paths.yaml", lambda r: r.update(dev_visible_through=None))
     edit("risk.yaml", risk)
     edit("manual.yaml", lambda r: r.update(default_account_id=None))
+
+    def accounts(r):
+        for a in (r.get("accounts") or {}).values():
+            a["approved"] = False
+
+    if (root / "config" / "accounts.yaml").is_file():
+        edit("accounts.yaml", accounts)
     return root
 
 
