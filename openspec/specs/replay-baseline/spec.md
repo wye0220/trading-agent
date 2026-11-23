@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-replay-baseline. Update Purpose after archive.
+用阶段 3 的引擎在开发可见的历史数据上回放策略，按 scope 冻结可复现的基线清单，校验两次运行完全一致，并生成基线报告供以后的候选比较。
 
 ## Requirements
 

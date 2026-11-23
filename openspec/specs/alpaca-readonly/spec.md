@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-equity-manual-track. Update Purpose after archive.
+只读地读取 Alpaca 模拟盘的持仓、挂单、订单记录和成交，供人工轨的 watch 提醒和成交导入使用；不含任何下单、改单、撤单或平仓的能力。
 
 ## Requirements
 

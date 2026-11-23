@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-equity-manual-track. Update Purpose after archive.
+让没有合约月、不换月的股票和 ETF（如 SPY、QQQ）可以登记为品种并进入人工交易纪律轨，同时不改变期货的合约解析，也不为它们建立策略、回放或基线。
 
 ## Requirements
 

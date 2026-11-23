@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-replay-baseline. Update Purpose after archive.
+把一个品种的交易日按日期登记为开发段、向前验证段和截止日之后封存的 20 日胶囊，记录日期清单与内容摘要，使保留数据的使用可核对、不可事后挪动。
 
 ## Requirements
 

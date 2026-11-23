@@ -2,7 +2,7 @@
 
 ## Purpose
 
-TBD - created by archiving change add-replay-baseline. Update Purpose after archive.
+在用掉任何保留数据之前，用开发段的实测频率、预登记扰动的配对日差和区块 bootstrap 模拟，弄清确认窗能分辨多大的效应，并据此给出短窗正式资格。
 
 ## Requirements
 
