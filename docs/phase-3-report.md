@@ -1,6 +1,6 @@
 # 阶段 3 汇报：引擎核心
 
-日期：2026-11-22。分支：`phase-3-engine`（从 `phase-2-strategy-spi` 分出，未合并）。变更：`openspec/changes/add-engine-core/`。
+日期：2026-11-22。分支：`phase-3-engine`（从 `phase-2-strategy-spi` 分出，未合并）。变更：`openspec/changes/archive/2026-11-22-add-engine-core/`。
 
 ## 1. 完成项与未完成项
 
