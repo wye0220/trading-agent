@@ -51,6 +51,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--from-mcp", metavar="JSON",
                             help="读 Webull MCP 连接器 get_futures_bars 返回的 JSON 文件（文件里有几个已登记的品种就存几个）")
             sp.add_argument("--fetched-at", metavar="ISO8601", help="该文件的取数时刻（UTC）。缺省用文件的修改时间")
+            sp.add_argument("--mcp-request", action="store_true",
+                            help="只打印此刻该向 Webull MCP 连接器请求的合约代码和起始时刻（不取数、不写数据）")
         if name == "scan":
             sp.add_argument("--as-of", metavar="ISO8601", help="历史扫描的决策时点（UTC，或带时区）。缺省为盘中扫描")
             sp.add_argument("--allow-real-data", action="store_true",
@@ -160,6 +162,26 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
 
         if args.command == "baseline":
             return _baseline(args, settings, con, scope, registry)
+
+        if args.command == "collect" and args.mcp_request:
+            import time as _time
+
+            from . import contracts
+            now = int(_time.time())
+            day = sessions.trading_day_at(now)
+            back = day
+            for _ in range(settings.collect["lookback_trading_days"] - 1):
+                back = sessions.prev_trading_day(back)
+            roots = [r for r in settings.collect.get("mcp_roots", ["ES", "NQ"]) if r in settings.instruments]
+            symbols = [contracts.short_symbol(contracts.active_contract(settings.instrument(r), day, settings.roll_rules))
+                       for r in roots]
+            start = sessions.eth_bounds(back)[0]
+            out = {"ok": True, "tool": "get_futures_bars", "symbols": ",".join(symbols), "category": "US_FUTURES",
+                   "timespan": "M5", "start_time": sessions.iso(start).replace("Z", ".000Z"),
+                   "count": min(1200, (now - start) // 300 + 2), "trading_day": day.isoformat()}
+            _emit(out, args.json, f"symbols={out['symbols']} category=US_FUTURES timespan=M5 "
+                                  f"start_time={out['start_time']} count={out['count']}（交易日 {out['trading_day']}）")
+            return 0
 
         if args.command == "collect" and args.from_mcp:
             return _collect_mcp(args, settings, con, scope)

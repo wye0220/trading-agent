@@ -112,3 +112,13 @@ def test_adapter_module_has_no_network_or_trading_calls():
     text = (H.PROJECT / "src" / "trading_agent" / "sources" / "webull_mcp.py").read_text(encoding="utf-8")
     for banned in ("import requests", "urllib", "socket", "place_", "cancel_", "replace_order", "import webull"):
         assert banned not in text, banned
+
+
+def test_mcp_request_prints_active_contracts_without_writing(env, capsys):
+    code = main(["collect", "--mcp-request", "--json"], settings=env.settings)
+    r = json.loads(capsys.readouterr().out)
+    assert code == 0 and r["category"] == "US_FUTURES" and r["timespan"] == "M5" and 2 <= r["count"] <= 1200
+    es, nq = r["symbols"].split(",")
+    assert es.startswith("ES") and nq.startswith("NQ") and len(es) == 4 and es[2:] == nq[2:]
+    assert r["start_time"].endswith(".000Z") and sessions.parse_utc(r["start_time"]) % 300 == 0
+    assert not (env.root / "webull").exists() and env.count() == 0

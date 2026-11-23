@@ -76,7 +76,11 @@ uv run python -m trading_agent collect
 
 其余子命令（`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
 
-## 实时采集（暂不可用）
+## 每日采集（Webull MCP 连接器）
+
+2026-11-23 起，ES 和 NQ 的 5 分钟线通过 Claude 里的 Webull MCP 连接器每日保存：会话里取数，`collect --from-mcp <JSON 文件>` 落盘入库。细节和限制见 `docs/data-contract.md` 的"Webull MCP 连接器"。这些数据晚于开发可见截止日，只存文件，价格不进运行库。
+
+## 无人值守的实时采集（暂不可用）
 
 **现状（2026-11-22）：Webull 账号没有美国期货行情，`collect` 取不到 ES 的 K 线，实时来源暂缓接入。** 阶段 2–5 只用历史数据，不受影响。等做到盘中 `scan`、`watch` 时再定来源。
 
