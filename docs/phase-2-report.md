@@ -1,6 +1,6 @@
 # 阶段 2 汇报：策略插件接口与 PA v1.0
 
-日期：2026-11-22。分支：`phase-2-strategy-spi`（从 `phase-1-data-contract` 分出，未合并）。变更：`openspec/changes/add-strategy-spi-pa-brooks/`。
+日期：2026-11-22。分支：`phase-2-strategy-spi`（从 `phase-1-data-contract` 分出，未合并）。变更：`openspec/changes/archive/2026-11-22-add-strategy-spi-pa-brooks/`。
 
 ## 1. 完成项与未完成项
 
