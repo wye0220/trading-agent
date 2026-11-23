@@ -1,0 +1,14 @@
+name: 信号 K 实体恰好 20% 通过
+description: 全幅 10 tick、实体 2 tick，恰好 20%，通过质量检查。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5009, 5009.5], expect: {phase: PULLBACK}}
+  - {b: [5009.5, 5010, 5007, 5007.5]}
+  - {b: [5009, 5010, 5007.5, 5009.5], expect: {signal: SETUP_VALID, label: H1, trigger: 5010.25, limit: 5010.5, stop: 5006.75}}

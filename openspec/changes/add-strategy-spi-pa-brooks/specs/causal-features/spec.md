@@ -18,15 +18,15 @@
 - **THEN** EMA20 等于该收盘价
 
 ### Requirement: ATR14
-系统 SHALL 用 Wilder 平滑计算 14 周期平均真实波幅。真实波幅不足 14 个时 MUST 报告为不可用。计算结果 MUST NOT 被四舍五入后再与阈值比较。
+系统 SHALL 用 Wilder 平滑计算 14 周期平均真实波幅。真实波幅不足 14 个时 MUST 报告为不可用。计算结果 MUST NOT 被取整到整数 tick 后再与阈值比较；它以不粗于百万分之一 tick 的固定精度保存。
 
 #### Scenario: 首个可用值
 - **WHEN** 恰好有 14 个真实波幅
-- **THEN** ATR14 等于它们的算术平均
+- **THEN** ATR14 等于它们的算术平均（在固定精度内）
 
 #### Scenario: 之后的平滑
 - **WHEN** 已有 ATR 值 A，新的真实波幅为 T
-- **THEN** 新的 ATR 等于 (13×A + T) ÷ 14
+- **THEN** 新的 ATR 等于 (13×A + T) ÷ 14（在固定精度内）
 
 ### Requirement: 指标不跨合约接续
 EMA 和 ATR SHALL 只用同一实际合约的 K 线计算。换月后 MUST 从新合约的数据重新起算。

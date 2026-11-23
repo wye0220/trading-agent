@@ -1,0 +1,14 @@
+name: ES 回撤超过 75% 作废，同根不发信号
+description: 第 4 根使回撤达到 9.25 点（超过 75%），它本身满足 H 信号的形态，但回调作废，不发信号。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5004, 5004.5]}
+  - {b: [5004.5, 5007, 5002.75, 5006.75], expect: {signal: WAIT, label: null, ended: INVALIDATED_RETRACE, spike: false}}
+  - {b: [5006.75, 5008, 5006.5, 5007.75], expect: {spike: false}}

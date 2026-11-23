@@ -66,6 +66,22 @@
 
 仓位、候选和发布另有状态机，在对应阶段定义。阶段 1 的 `scan` 只会给出 `WAIT` 或 `DATA_ERROR`。
 
+## 策略（阶段 2）
+
+- **`StrategyProvider`**：所有策略共用的插件接口。策略是无副作用的纯函数。见 `docs/strategy-spec.md`。
+- **`OrderIntent`**：标准订单意图。订单类型 `STOP_LIMIT_NEXT_BAR` | `MARKET_NEXT_OPEN` | `LIMIT_RETRACE`。
+- **目标描述（`TargetSpec`）**：`ABSOLUTE_PRICE_TICKS`（绝对价）、`OFFSET_FROM_FILL_TICKS`（相对成交价的 tick 距离）、`INITIAL_RISK_MULTIPLE`（初始风险的倍数，即几 R）。
+- **`setup_id`**：一个信号的稳定标识，由策略家族、实际合约、形态、信号 K 时刻和版本生成。
+- **强趋势 K**：实体 ≥ 全幅的 50%、收在方向一侧的 1/3 之内、创出新的方向极值的 K 线。
+- **Spike（尖峰）**：至少 2 根连续同向的强趋势 K，首根开盘到末根收盘的幅度 ≥ 2.5 × ATR。
+- **回调**：Spike 之后第一根不再创新极值的 K 起算。回撤比例 = 反向走过的最大距离 ÷（Spike 极值 − Spike 首根开盘）。
+- **反向腿**：回调中某根严格越过前一根的反向极值（牛 Spike 的回调里是破前一根低点），开启一条腿。
+- **H1／H2／H3、L1／L2／L3**：牛 Spike 回调中每条反向腿之后第一根合格的顺势信号 K，依次标 H1–H3；熊 Spike 镜像，标 L1–L3。
+- **信号 K**：触发订单意图的那根 K。下一根 K 是它的有效期。
+- **周期（`cycle`）**：`BULL_SPIKE`、`BEAR_SPIKE`、`BULL_MICROCHANNEL`、`BEAR_MICROCHANNEL` 或 `UNKNOWN`。
+- **`skip_reason`**：信号被拦截或无法判定的原因，如 `TAIL_WINDOW_UNCONFIGURED`、`TWO_STOPS_HALT`、`FEATURE_UNAVAILABLE:atr14`。
+- **定点精度**：EMA 和 ATR 以 1e-9 tick 为单位的整数保存。
+
 ## 数据位置
 
 - **数据根目录（`data_root`）**：项目之外，默认 `~/trading-agent-data/`。存放原始行情（`databento/`、`webull/`）和运行库（`runtime/`）。

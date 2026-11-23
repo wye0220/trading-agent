@@ -1,0 +1,13 @@
+name: ES 回撤恰好 75% 仍有效
+description: Spike 首根开盘 5000，极值 5012，分母 12 点。回调低点 5003，回撤 9 点 = 75%，等于阈值仍有效，随后的阳线是 H1。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75]}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5003, 5003.5], expect: {phase: PULLBACK, spike: true}}
+  - {b: [5003.5, 5006, 5003.25, 5005.75], expect: {signal: SETUP_VALID, label: H1, trigger: 5006.25, limit: 5006.5, stop: 5002.75}}

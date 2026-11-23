@@ -1,0 +1,11 @@
+name: Spike 幅度恰好 2.5×ATR
+description: ATR 4 点，门槛 10 点。两根强阳线，首根开盘 5000，末根收盘 5010，幅度恰好 10 点，识别为 Spike。
+instrument: ES
+date: 2025-11-25
+start: "10:00"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5000.5, 4999.5, 5000]}
+  - {b: [5000, 5006, 4999.75, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5010.25, 5005.5, 5010], expect: {spike: true, cycle: BULL_SPIKE, spike_extreme: 5010.25}}

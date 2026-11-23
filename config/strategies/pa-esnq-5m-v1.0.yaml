@@ -1,0 +1,60 @@
+# PA v1.0（Al Brooks 价格行为，5 分钟）。阈值都是待验证的实验预设。
+# 规格见 docs/strategy-spec.md。改任何数值都应换版本号。
+strategy_family: pa_brooks
+version: v1.0
+timeframe: 5m
+
+params:
+  spike:
+    min_bars: 2                 # 至少几根连续的强趋势 K
+    body_min_pct: 50            # 强趋势 K：实体 ≥ 全幅的百分之几
+    close_extreme_divisor: 3    # 强趋势 K：收盘在方向一侧的 1/3 之内
+    min_move_atr: "2.5"         # 首根开盘到末根收盘 ≥ 几倍 ATR
+  quality:
+    body_min_pct: 20            # 信号 K：实体 ≥ 全幅的百分之几
+    max_range_atr: "3"          # 信号 K：全幅 ≤ 几倍 ATR
+  pullback:
+    max_label: 3                # 最多标到 H3 / L3
+  entry:
+    order_type: STOP_LIMIT_NEXT_BAR
+    ttl_bars: 1
+    trigger_offset_ticks: 1     # 信号 K 极值外几 tick 触发
+    limit_offset_ticks: 1       # 限价 = 触发价再让几 tick
+    stop_offset_ticks: 1        # 止损在回调极值外几 tick
+  target:
+    adr_fraction: "0.40"
+    fallback_risk_multiple: 2
+    late_session_2r: false      # 14:30 ET 后改用 2R 的选项，默认关闭
+  discipline:
+    tail_window_minutes: 30     # RTH 收盘前多少分钟内不追单
+    max_stops_per_day: 2
+  microchannel_min_bars: 5
+  range_position_divisor: 3     # 过滤器 4：区间的上下 1/3
+  exhaustion:
+    ema_side_run_min: 10
+    range_atr: "1.5"
+    lookback: 10
+
+# 各品种的回调失效阈值。等于阈值仍有效。
+groups:
+  ES_MES: {max_retrace_pct: 75, max_pullback_bars: 20}
+  NQ_MNQ: {max_retrace_pct: 60, max_pullback_bars: 12}
+instruments:
+  ES: ES_MES
+  MES: ES_MES
+  NQ: NQ_MNQ
+  MNQ: NQ_MNQ
+
+# 形态按优先级从高到低。v1.0 只有 spike_pullback 启用；其余要等量化草案确认并实现后才能启用。
+# exempt：该形态豁免的过滤器（h1l1_block、counter_spike、counter_htf、range_position、exhaustion）。
+setups:
+  - {name: climax_reversal,      enabled: false, exempt: [counter_htf, range_position, exhaustion]}
+  - {name: spike_pullback,       enabled: true,  exempt: [h1l1_block, counter_htf, range_position, exhaustion]}
+  - {name: major_trend_reversal, enabled: false, exempt: [exhaustion]}
+  - {name: wedge,                enabled: false, exempt: [exhaustion]}
+  - {name: failed_breakout,      enabled: false, exempt: [exhaustion]}
+  - {name: double_top_bottom,    enabled: false, exempt: [exhaustion]}
+  - {name: lower_high_higher_low, enabled: false, exempt: []}
+  - {name: flag,                 enabled: false, exempt: []}
+  - {name: h2_l2,                enabled: false, exempt: []}
+  - {name: h1_l1,                enabled: false, exempt: []}

@@ -2,7 +2,13 @@
 
 ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能。
 
-规格来源是 `trading_agent_v2_6_pa.md`（Claude 提示词包 v2.6）。目前完成的是**阶段 1：数据合同与项目骨架**。术语见 `docs/glossary.md`，数据合同见 `docs/data-contract.md`。
+规格来源是 `trading_agent_v2_6_pa.md`（Claude 提示词包 v2.6）。术语见 `docs/glossary.md`。
+
+| 阶段 | 状态 | 文档 |
+| --- | --- | --- |
+| 1 数据合同与项目骨架 | 完成 | `docs/data-contract.md` |
+| 2 策略插件接口与 PA v1.0 | 完成（策略还没有接进 `scan`，也没有在真实数据上运行过） | `docs/strategy-spec.md` |
+| 3 引擎核心及以后 | 未开始 | — |
 
 ## 环境
 
@@ -95,3 +101,5 @@ uv run pytest -m webull_live -s  # 需要 Webull 凭证并联网
 ```
 
 合成样本在 `tests/fixtures/`，由 `tests/fixtures/make_fixtures.py` 生成，全部带 `FIXTURE` 标记。合成结果只用于验收，不能作为策略证据。
+
+策略的逐 bar 向量在 `tests/vectors/strategy/pa_brooks/`。每个向量会正向跑一遍，再按价格翻转跑一遍镜像。

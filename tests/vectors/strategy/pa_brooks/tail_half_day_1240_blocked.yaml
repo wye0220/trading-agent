@@ -1,0 +1,14 @@
+name: 半日市 13:00 收盘，信号 K 12:40 收线，在收盘前 30 分钟以内，拦截
+description: 半日市 13:00 收盘，信号 K 12:40 收线，在收盘前 30 分钟以内，拦截。K 线与 spike_pullback_h1_h2_resume 的前 6 根相同，只改了时间。
+instrument: ES
+date: 2025-11-28
+start: "12:10"
+atr: 4.0
+adr: null
+bars:
+  - {b: [5000, 5001, 4999, 5000.25]}
+  - {b: [5000.25, 5006, 5000, 5005.75], expect: {spike: false}}
+  - {b: [5005.75, 5012, 5005.5, 5011.5], expect: {spike: true, cycle: BULL_SPIKE, phase: SPIKE, spike_extreme: 5012}}
+  - {b: [5011.5, 5011.75, 5009, 5009.5], expect: {phase: PULLBACK}}
+  - {b: [5009.5, 5010, 5007, 5007.5]}
+  - {b: [5007.5, 5010, 5007.25, 5009.75], expect: {signal: WAIT, label: H1, skip: TAIL_WINDOW_UNCONFIGURED}}
