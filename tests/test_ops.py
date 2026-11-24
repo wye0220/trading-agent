@@ -286,13 +286,49 @@ def test_telegram_adapter_verifies_chat_and_sender(env):
             {"update_id": 7, "message": {"chat": {"id": -100}, "from": {"id": 42}, "text": "freeze ALL"}},
             {"update_id": 8, "message": {"chat": {"id": -100}, "from": {"id": 99}, "text": "freeze ALL"}},
             {"update_id": 9, "message": {"chat": {"id": -5}, "from": {"id": 42}, "text": "freeze ALL"}}]}
+    assert AD.telegram_poll(env.con, CCFG, transport) == []         # 第一次只记位置：启用前积压的消息不当命令
+    assert ST.get(env.con, AD.OFFSET_KEY) == 9
+    ST.put(env.con, AD.OFFSET_KEY, 6)
     msgs = AD.telegram_poll(env.con, CCFG, transport)
     assert [m.verified for m in msgs] == [True, False, False] and ST.get(env.con, AD.OFFSET_KEY) == 9
     res = [C.execute(env.settings, env.con, m, CCFG, OCFG, registry=TR.REG)["status"] for m in msgs]
     assert res == ["DONE", "REFUSED", "REFUSED"]
     AD.telegram_poll(env.con, CCFG, transport)
     assert calls[-1][1]["offset"] == 10
-    assert AD.telegram_token(env.settings) is None
+    assert AD.normalize("/watch_interval@ta_bot 5m") == "watch-interval 5m" and AD.normalize("freeze ALL") == "freeze ALL"
+
+
+def test_telegram_bind_and_resolve(env, monkeypatch):
+    monkeypatch.setattr(AD, "shared_env_files", lambda s: [])
+    assert AD.telegram_credentials(env.settings) is None
+    sec = env.settings.data_root / "secrets"
+    sec.mkdir(parents=True, exist_ok=True)
+    (sec / "telegram.env").write_text("TELEGRAM_BOT_TOKEN=t\nTELEGRAM_CHAT_ID=-100\n", encoding="utf-8")
+    monkeypatch.setattr(AD, "shared_env_files", lambda s: [sec / "telegram.env"])
+    assert AD.telegram_credentials(env.settings) == ("t", "-100")
+    cfg = parse_control({"adapters": {"telegram": {"enabled": True, "chat_id": "from_env", "users": "from_secrets",
+                                                   "approver": True}}})
+    assert AD.resolve(env.settings, cfg).telegram_users == {}
+    sent, batches = [], iter([
+        {"result": [{"update_id": 1, "message": {"chat": {"id": -100}, "from": {"id": 5}, "text": "/freeze ALL"}}]},
+        {"result": [{"update_id": 2, "message": {"chat": {"id": -100}, "from": {"id": 77}, "text": "hi"}},
+                    {"update_id": 3, "message": {"chat": {"id": -100}, "from": {"id": 42}, "text": "/bind@ta_bot c0de"}}]}])
+
+    def transport(method, params):
+        if method == "sendMessage":
+            sent.append(params)
+            return {"ok": True}
+        if method == "getMe":
+            return {"result": {"username": "ta_bot"}}
+        return next(batches)
+    r = AD.bind(env.settings, env.con, AD.resolve(env.settings, cfg), transport, code="c0de", sleep=lambda s: None,
+                emit=lambda s: None)
+    assert r["status"] == "BOUND" and r["user_id_suffix"] == "42" and sent and sent[0]["chat_id"] == "-100"
+    import stat
+    assert stat.S_IMODE((sec / "control-telegram.env").stat().st_mode) == 0o600
+    got = AD.resolve(env.settings, cfg)
+    assert got.telegram_chat_id == "-100" and got.telegram_users == {"42": {"approver": True}}
+    assert ST.get(env.con, AD.OFFSET_KEY) == 3                           # 绑定期间的消息没有被当命令执行
 
 
 def test_health_lists_recovery(env):

@@ -43,6 +43,7 @@ def _neutral_project() -> Path:
 
     edit("paths.yaml", lambda r: r.update(dev_visible_through=None, holdout_root=str(root.parent / (root.name + "-holdout"))))
     edit("evaluation.yaml", lambda r: r["isolation"].update(sealed_data_root=None))
+    edit("control.yaml", lambda r: r["adapters"]["telegram"].update(enabled=False))   # 测试不碰真实的机器人
     edit("risk.yaml", risk)
     edit("manual.yaml", lambda r: r.update(default_account_id=None))
     (root / "config" / "live_data.yaml").write_text("{}\n", encoding="utf-8")     # 不放行实时行情；测试显式设置

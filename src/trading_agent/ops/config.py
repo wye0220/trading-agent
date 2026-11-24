@@ -39,6 +39,8 @@ class ControlConfig:
     telegram_enabled: bool
     telegram_chat_id: str | None
     telegram_users: dict
+    telegram_users_from_secrets: bool = False
+    telegram_bound_approver: bool = False
 
     def users(self, channel: str) -> dict:
         return {"CLI": self.cli_users, "TELEGRAM": self.telegram_users}.get(channel, {})
@@ -94,14 +96,16 @@ def parse_control(raw: dict) -> ControlConfig:
                 raise ConfigError(f"{path}.{k} 应为 {{approver: true/false}}")
             out[str(k)] = {"approver": bool(v.get("approver"))}
         return out
-    tg_users = users(tg.get("users"), "control.adapters.telegram.users")
-    if tg.get("enabled") and (not tg.get("chat_id") or not tg_users):
-        raise ConfigError("启用 Telegram 控制通道要填 chat_id 和绑定的用户 ID")
+    from_secrets = tg.get("users") == "from_secrets"
+    tg_users = {} if from_secrets else users(tg.get("users"), "control.adapters.telegram.users")
+    if tg.get("enabled") and (not tg.get("chat_id") or not (tg_users or from_secrets)):
+        raise ConfigError("启用 Telegram 控制通道要填 chat_id（或 from_env）和绑定的用户（或 from_secrets）")
     return ControlConfig(token_ttl_seconds=_int(raw.get("token_ttl_seconds", 120), "control.token_ttl_seconds", 10),
                          cli_enabled=bool(cli.get("enabled", True)), cli_users=users(cli.get("users"), "control.adapters.cli.users"),
                          telegram_enabled=bool(tg.get("enabled")),
                          telegram_chat_id=None if tg.get("chat_id") is None else str(tg.get("chat_id")),
-                         telegram_users=tg_users)
+                         telegram_users=tg_users, telegram_users_from_secrets=from_secrets,
+                         telegram_bound_approver=bool(tg.get("approver", False)))
 
 
 def load_ops(project_root) -> OpsConfig:

@@ -1,6 +1,6 @@
 # 控制通道（阶段 10）。只有身份校验通过、发送者在下面绑定的命令才生效。
-# Telegram 用专用机器人（不复用 trading-desk 的机器人，免得两边抢消息）：
-#   token 放在 <data_root>/secrets/control-telegram.env（CONTROL_TELEGRAM_BOT_TOKEN=...），不进版本控制。
+# Telegram：缺省用通知的共享机器人（trading-desk 的 .env，只解析 TELEGRAM_BOT_TOKEN、TELEGRAM_CHAT_ID）；
+#   要换专用机器人就在 <data_root>/secrets/control-telegram.env 写 CONTROL_TELEGRAM_BOT_TOKEN、CONTROL_TELEGRAM_CHAT_ID。
 token_ttl_seconds: 120               # unfreeze 等二次确认的令牌有效期
 
 adapters:
@@ -8,6 +8,10 @@ adapters:
     enabled: true
     users: {}                        # 系统用户名 → {approver: true/false}；例如 wenye: {approver: true}
   telegram:
-    enabled: false
-    chat_id: null                    # 只接受这个聊天里的消息
-    users: {}                        # Telegram 用户 ID（字符串）→ {approver: true/false}
+    # 2026-11-24 用户决定：用 trading-desk 的机器人（与告警同一个群）。它只发不收，不会和这里抢消息。
+    # 机器人在群里开着隐私模式，只收得到 / 开头的命令：/freeze ALL、/watch_interval 5m、/approve …
+    enabled: true
+    chat_id: from_env                # 取通知用的 TELEGRAM_CHAT_ID（只认这个群里的消息）
+    users: from_secrets              # 绑定的用户 ID 存在 <data_root>/secrets/control-telegram.env，不进仓库；
+                                     # 用 control --telegram-bind 一次性绑定
+    approver: true                   # 绑定的用户是批准人（approve、unfreeze、reject、confirm-memory）

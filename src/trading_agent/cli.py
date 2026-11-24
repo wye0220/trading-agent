@@ -170,6 +170,8 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "control":
             sp.add_argument("--exec", dest="exec_text", metavar="命令", help="以当前系统用户执行一条控制命令（须在 config/control.yaml 绑定）")
             sp.add_argument("--poll", action="store_true", help="拉取 Telegram 控制通道的新消息并执行（须启用并配置）")
+            sp.add_argument("--telegram-bind", action="store_true",
+                            help="一次性绑定：在群里发 /bind@机器人名 <码> 的人成为控制通道的绑定用户（等 10 分钟）")
             sp.add_argument("--audit", action="store_true", help="最近的控制命令审计")
         if name not in IMPLEMENTED:
             sp.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
@@ -630,13 +632,21 @@ def _control(args, settings, con, registry) -> int:
         _emit(r, args.json, f"{r['status']}" + (f"（{r.get('reason')}）" if r.get("reason") else "") +
               (f"：{r.get('text') or r.get('message') or ''}"))
         return 0 if r["status"] in ("DONE", "PENDING_CONFIRM", "DUPLICATE") else 1
-    if args.poll:
+    if args.poll or args.telegram_bind:
         token = adapters.telegram_token(settings)
         if not ccfg.telegram_enabled or not token:
             _emit({"status": "NOT_CONFIGURED"}, args.json,
-                  "Telegram 控制通道没有启用：config/control.yaml 里启用并绑定用户，token 放 <data_root>/secrets/control-telegram.env")
+                  "Telegram 控制通道没有启用，或找不到机器人凭证（config/control.yaml、ops/notify-telegram.sh 的凭证位置）")
             return 1
         tr = adapters.telegram_transport(token)
+        ccfg = adapters.resolve(settings, ccfg)
+        if args.telegram_bind:
+            r = adapters.bind(settings, con, ccfg, tr, wait_seconds=600, emit=lambda s: print(s, flush=True))
+            _emit(r, args.json, f"{r['status']}" + (f"：已绑定用户（ID 尾号 {r['user_id_suffix']}），共 {r['users']} 个" if r["status"] == "BOUND" else "：没有等到绑定消息"))
+            return 0 if r["status"] == "BOUND" else 1
+        if not ccfg.telegram_users:
+            _emit({"status": "NOT_BOUND"}, args.json, "还没有绑定用户：先运行 control --telegram-bind")
+            return 1
         res = []
         for m in adapters.telegram_poll(con, ccfg, tr):
             r = octl.execute(settings, con, m, ccfg, ocfg, registry=reg)

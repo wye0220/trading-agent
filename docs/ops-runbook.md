@@ -13,7 +13,7 @@
 | 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch`（已安装） |
 | 每 5 分钟准点（交易日 RTH 开盘到收盘后 10 分钟） | 盘中取数，然后节拍 | `ops/launchd/run-intraday.sh`，或只跑 `python -m trading_agent ops --tick` | `com.wenye.trading-agent-intraday`（已安装） |
 | 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check`（已安装） |
-| 每 30 秒 | 拉取 Telegram 控制通道 | `python -m trading_agent control --poll` | `com.wenye.trading-agent-control` |
+| 每 30 秒 | 拉取 Telegram 控制通道 | `python -m trading_agent control --poll` | `com.wenye.trading-agent-control`（已安装） |
 | 17:45（每日采集之后） | 盘后流水 | `python -m trading_agent ops --daily` | `com.wenye.trading-agent-daily`（已安装） |
 | 16:30 | 模型解释 | `python -m trading_agent ops --explain` | `com.wenye.trading-agent-explain` |
 | 18:05 | 周度聚合（只在每周最后一个交易日做事） | `python -m trading_agent ops --weekly` | `com.wenye.trading-agent-weekly`（已安装） |
@@ -97,7 +97,10 @@ launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily      # 停用
 **适配器**：
 
 - 本机命令行：`python -m trading_agent control --exec "freeze ALL 盘前演练"`。发送者是当前系统用户，要在 `adapters.cli.users` 里绑定（现在是空的，所以全部拒绝）。
-- Telegram：用**专用机器人**（不复用 trading-desk 的机器人，免得两边抢消息）。token 写在 `~/trading-agent-data/secrets/control-telegram.env`（`CONTROL_TELEGRAM_BOT_TOKEN=…`），在 `adapters.telegram` 里填 `chat_id` 和你的用户 ID、设 `enabled: true`。只认那个聊天里绑定用户发的消息。
+- Telegram（2026-11-24 启用）：用告警的同一个机器人和群（trading-desk 的机器人只发不收，不会和这里抢消息；凭证与 `ops/notify-telegram.sh` 相同，只解析 `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID`）。只认那个群里**绑定用户**发的消息；绑定的用户 ID 存在 `~/trading-agent-data/secrets/control-telegram.env`（权限 600，不进仓库），用 `control --telegram-bind` 一次性绑定（在群里发 `/bind@ttradewoa_bot <码>`）。
+  - 机器人在群里开着隐私模式，命令要以 `/` 开头并带机器人名：`/freeze@ttradewoa_bot ALL`、`/watch_interval@ttradewoa_bot 5m`、`/approve@ttradewoa_bot cand_… <manifest_hash>`。命令名里的 `-` 写成 `_`。
+  - 第一次拉取只记下位置，启用之前积压的消息不当命令。
+  - 定时任务 `com.wenye.trading-agent-control` 每 30 秒拉一次（已安装）；结果回复到群里。
 - `python -m trading_agent control` 不带参数：最近 20 条审计。
 
 ## 6. 模型调用与死信
@@ -148,7 +151,7 @@ python -m trading_agent ops --explain              # 重新处理
 2. **盘中采集沿用 `claude -p` 调 Webull 连接器**，每 5 分钟一次；这是现在唯一有期货行情的来源。
 3. **节拍遍历 `config/ops.yaml` 登记的 scope**（现在只有 ES），不从发布库自动发现。
 4. **告警去重键和静默窗口**（缺省 30 分钟等）是预设；第一次分发时积压的告警不推送。
-5. **Telegram 控制通道用专用机器人**，不复用 trading-desk 的；本机命令行通道的绑定用户现在是空的，两个通道都要你配置之后才执行命令。
+5. **Telegram 控制通道用告警的同一个机器人和群**（2026-11-24 你的决定；trading-desk 只发不收，不冲突）；绑定的用户是批准人。本机命令行通道的绑定用户现在是空的。
 6. **本机命令行通道的发送者就是系统用户**，和批准人是同一个人；它只防误操作，不是安全边界。
 7. **`unfreeze` 的令牌 120 秒有效**；`approve` 只要求回显完整摘要，不再要令牌（摘要本身就是二次确认）。
 8. **context 只认固定文法**：`no-entry` 和 `max-qty`；自由文本不执行。禁止入场同时作用于纸面入场和人工计划预检。
@@ -164,7 +167,7 @@ python -m trading_agent ops --explain              # 重新处理
 | 周度 18:05 | 已安装 | 只有每周最后一个交易日做事 |
 | watch（09:25–16:05）、watch 检查（每 2 分钟） | 已安装（2026-11-23） | Alpaca 模拟盘只读密钥在 `~/trading-agent-data/secrets/alpaca.env`；实测 `watch --once` 状态 OK |
 | 盘中采集与节拍 | 已安装（2026-11-23） | 每小时 :00、:05 … :55 准点触发，等 20 秒后取数并跑节拍；按交易日历只在 RTH 开盘到收盘后 10 分钟内做事（休市日、提前收盘之后不起会话）。每次一个 `claude -p` 会话；日志 `~/trading-agent-data/logs/ops/<日期>-intraday.log` |
-| 控制通道 | 没装 | 本机命令行没有绑定用户，Telegram 没有专用机器人 |
+| 控制通道（Telegram） | 已安装（2026-11-24） | 用告警的同一个机器人和群；绑定了你的用户 ID；每 30 秒拉一次。本机命令行通道仍没有绑定用户 |
 | 模型解释 | 没装 | 积压 1362 个请求，等你决定 |
 
 **注意**：launchd 运行的是项目目录里**当前检出的分支**。切换分支会改变定时任务执行的代码；上线期间请保持检出 `ops-go-live`（或合并后的 `main`）。
