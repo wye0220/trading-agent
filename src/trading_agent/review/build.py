@@ -248,7 +248,10 @@ def run(settings: Settings, con: sqlite3.Connection, scope: Scope | None, run_id
         cut = settings.dev_visible_through
         kpi = json.loads(row["kpi_json"])
         fixture = bool((kpi.get("data") or {}).get("fixture"))
-        if not fixture and (cut is None or date.fromisoformat(trading_day) > cut):
+        from .. import live_window
+        live = cut is not None and scope is not None and live_window.effective(
+            con, settings.project_root).is_live_day(scope.instrument_root, trading_day)
+        if not fixture and (cut is None or date.fromisoformat(trading_day) > cut) and not live:
             raise ReviewError("HOLDOUT_PROTECTED", f"{trading_day} 晚于开发可见截止日，不由普通复盘处理")
     scope_text = row["scope"]
     built = build(settings, con, scope, dict(row), research_cfg=research_cfg, risk_cfg=risk_cfg, manual_cfg=manual_cfg,

@@ -38,11 +38,12 @@ def get(con: sqlite3.Connection, sid: str) -> sqlite3.Row | None:
 def kpis(con: sqlite3.Connection, run_id: str, day: date) -> dict:
     lo, hi = day_window(day)
     ds = day.isoformat()
+    # 按时间窗口，或按决策所属的交易日（盘后补扫的决策时点晚于窗口，但属于这一天）
+    within = "run_id=? AND ((as_of_utc>=? AND as_of_utc<?) OR json_extract(decision_json,'$.trading_day')=?)"
     ev = con.execute("SELECT COUNT(*), SUM(signal_status='SETUP_VALID'), SUM(signal_status='DATA_ERROR'),"
-                     " MAX(as_of_utc) FROM scan_events WHERE run_id=? AND as_of_utc>=? AND as_of_utc<?",
-                     (run_id, lo, hi)).fetchone()
-    last = con.execute("SELECT version_tuple_json FROM scan_events WHERE run_id=? AND as_of_utc>=? AND as_of_utc<?"
-                       " ORDER BY as_of_utc DESC LIMIT 1", (run_id, lo, hi)).fetchone()
+                     " MAX(as_of_utc) FROM scan_events WHERE " + within, (run_id, lo, hi, ds)).fetchone()
+    last = con.execute("SELECT version_tuple_json FROM scan_events WHERE " + within + " ORDER BY as_of_utc DESC LIMIT 1",
+                       (run_id, lo, hi, ds)).fetchone()
     orders = dict(con.execute("SELECT status, COUNT(*) FROM paper_orders WHERE run_id=? AND signal_bar_end_utc>=?"
                               " AND signal_bar_end_utc<? GROUP BY 1", (run_id, lo, hi)).fetchall())
     net, r, flags, n = Decimal(0), Decimal(0), Counter(), 0
@@ -84,8 +85,11 @@ def seal(settings: Settings, con: sqlite3.Connection, scope: Scope, run_id: str,
     cut = settings.dev_visible_through
     if td is None and kpis(con, run_id, day)["decisions"] == 0:
         raise SealError("NO_ACTIVITY", f"运行 {run_id} 在 {ds} 没有任何决策记录")
-    if not fixture and (cut is None or day > cut):
-        # 保留窗口和未解封的胶囊由评测侧处理，不能流回普通复盘
+    from .. import live_window
+    live = cut is not None and live_window.effective(con, settings.project_root).is_live_day(scope.instrument_root, ds)
+    if not fixture and (cut is None or day > cut) and not live:
+        # 保留窗口和未解封的胶囊由评测侧处理，不能流回普通复盘。放行的实时行情日除外（2026-11-23 用户决定）：
+        # 它们本来就给纸面运行看，聚合仍按截止日把这些 session 排除在外。
         raise SealError("HOLDOUT_PROTECTED", f"{ds} 晚于开发可见截止日（或截止日没有设置），不能封存为普通 session")
     k = kpis(con, run_id, day)
     if k["decisions"] == 0:

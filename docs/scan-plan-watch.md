@@ -361,7 +361,7 @@ uv run python -m trading_agent ingest --alpaca            # 导入 Alpaca 的订
 
 **读 Alpaca 账户**有两种方式，解析相同，都是只读：
 
-- 有 API 密钥（环境变量或项目根目录 `.env` 里的 `ALPACA_API_KEY`、`ALPACA_SECRET_KEY`）：直接读。只发 GET，只连模拟盘地址 `paper-api.alpaca.markets`。
+- 有 API 密钥（按顺序找：环境变量、`<data_root>/secrets/alpaca.env`、项目根目录 `.env` 里的 `ALPACA_API_KEY`、`ALPACA_SECRET_KEY`）：直接读。2026-11-23 起放在 `~/trading-agent-data/secrets/alpaca.env`（权限 600，不在项目里）。只发 GET，只连模拟盘地址 `paper-api.alpaca.markets`。
 - 没有密钥：读 `<data_root>/broker/alpaca-paper/alpaca/` 下保存的 JSON：`positions.json`、`orders_open.json`、`orders_all.json`，可选 `fills.json`。在 Claude 会话里用 Alpaca 连接器取回后存下即可。
 
 `plan` 在登记和激活前会先读一次账户，因为预检要求账户状态足够新（默认 120 秒内）。

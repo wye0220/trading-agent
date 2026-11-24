@@ -2,7 +2,7 @@
 
 阶段 1–9 的每一步都能手动运行。这一阶段把它们串成可调度的流水：launchd 只调用 `ops` 和 `control` 两个子命令，手工运行完全等价。
 
-**没有安装任何新的定时任务。** 样例在 `ops/launchd/*.plist.example`，你授权后再装。已安装的只有阶段 1 的每日采集 `com.wenye.trading-agent-collect`。
+**已安装（2026-11-23，你授权）**：每日采集 `com.wenye.trading-agent-collect`（17:12）、盘后 `com.wenye.trading-agent-daily`（17:45）、周度 `com.wenye.trading-agent-weekly`（18:05）、watch（09:25–16:05）、watch 检查（每 2 分钟）。其余是样例（`ops/launchd/*.plist.example`），没有安装。见第 9 节。
 
 配置：`config/ops.yaml`（scope、节拍、盘后、告警、模型调用）和 `config/control.yaml`（控制通道）。数值是预设，需要你确认。
 
@@ -10,14 +10,14 @@
 
 | 时刻（ET） | 动作 | 等价的手工命令 | 样例 |
 | --- | --- | --- | --- |
-| 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch` |
+| 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch`（已安装） |
 | 每 5 分钟（09:30–16:10） | 盘中取数，然后节拍 | `ops/launchd/run-intraday.sh`，或只跑 `python -m trading_agent ops --tick` | `com.wenye.trading-agent-intraday` |
-| 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check` |
+| 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check`（已安装） |
 | 每 30 秒 | 拉取 Telegram 控制通道 | `python -m trading_agent control --poll` | `com.wenye.trading-agent-control` |
-| 16:15 | 盘后流水 | `python -m trading_agent ops --daily` | `com.wenye.trading-agent-daily` |
+| 17:45（每日采集之后） | 盘后流水 | `python -m trading_agent ops --daily` | `com.wenye.trading-agent-daily`（已安装） |
 | 16:30 | 模型解释 | `python -m trading_agent ops --explain` | `com.wenye.trading-agent-explain` |
-| 16:40 | 周度聚合（只在每周最后一个交易日做事） | `python -m trading_agent ops --weekly` | `com.wenye.trading-agent-weekly` |
-| 17:12 | 每日采集（已安装） | `ops/launchd/run-collect-mcp.sh` | `com.wenye.trading-agent-collect` |
+| 18:05 | 周度聚合（只在每周最后一个交易日做事） | `python -m trading_agent ops --weekly` | `com.wenye.trading-agent-weekly`（已安装） |
+| 17:12 | 每日采集 | `ops/launchd/run-collect-mcp.sh` | `com.wenye.trading-agent-collect`（已安装） |
 
 每个 `ops` 动作结束时都会分发一次告警。日志在 `~/trading-agent-data/logs/ops/<日期>-<动作>.log`。
 
@@ -46,11 +46,13 @@ launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily      # 停用
 
 **`ops --daily`**（收盘后 15 分钟起才做事，提前收盘随日历；`--day` 补跑某一天）：
 
-1. 当日 RTH 线没到齐：不封存，记 WARN `INCOMPLETE_DAY`。
-2. 常驻纸面运行：封存并复盘该 session。落在进行中的前向保留窗口里时跳过复盘（复盘产物属于评测侧），只记运行健康。
-3. 账本检查：不一致记 CRITICAL `LEDGER_INCONSISTENT`。
-4. 发布后监控：触发时自动冻结并记 CRITICAL `MONITOR_FREEZE`。
-5. 人工轨：封存并复盘 `config/ops.yaml` 的 `daily.account`（缺省是 `config/manual.yaml` 的默认账户）。
+0. 截止日之后、放行首日之前的封存日：直接跳过（`SEALED_DAY`），不告警。
+1. 先补扫当天（跑一次节拍）：没有盘中采集时，纸面运行要到这里才看到当天的线。补扫的信号已过期，不挂单，也不计入纸面运行验收。
+2. 当日 RTH 线没到齐：不封存，记 WARN `INCOMPLETE_DAY`。
+3. 常驻纸面运行：封存并复盘该 session（放行的实时行情日可以封存；聚合仍按截止日把它们排除在外）。落在进行中的前向保留窗口里时跳过复盘（复盘产物属于评测侧），只记运行健康。
+4. 账本检查：不一致记 CRITICAL `LEDGER_INCONSISTENT`。
+5. 发布后监控：触发时自动冻结并记 CRITICAL `MONITOR_FREEZE`。
+6. 人工轨：封存并复盘 `config/ops.yaml` 的 `daily.account`（缺省是 `config/manual.yaml` 的默认账户）。
 
 **`ops --weekly`**：只在每周最后一个交易日按 scope 运行聚合，有新候选时记 INFO。各队列前三名的实时前向预演挂在每次节拍上。
 
@@ -151,4 +153,21 @@ python -m trading_agent ops --explain              # 重新处理
 7. **`unfreeze` 的令牌 120 秒有效**；`approve` 只要求回显完整摘要，不再要令牌（摘要本身就是二次确认）。
 8. **context 只认固定文法**：`no-entry` 和 `max-qty`；自由文本不执行。禁止入场同时作用于纸面入场和人工计划预检。
 9. **模型调用不给任何工具**，比"只读封存产物"更严：上下文由程序在入队时封存，放进提示词。
-10. **盘后流水在 16:15 跑**，提前收盘日也一样（那时已过收盘）；周度在 16:40 跑，不是周末交易日就直接返回。
+10. **盘后流水在 17:45 跑**（每日采集 17:12 之后），提前收盘日也一样；周度在 18:05 跑，不是周末交易日就直接返回。当天没有成交也没有提醒的人工轨记 `NO_ACTIVITY`，不算失败。
+
+## 9. 上线状态（2026-11-23）
+
+| 任务 | 状态 | 说明 |
+| --- | --- | --- |
+| 每日采集 17:12 | 已安装 | 2026-11-24 起的 Webull 线放行进运行库 |
+| 盘后 17:45 | 已安装 | 11-23 是封存日，试跑结果 `SEALED_DAY`；人工轨 `NO_ACTIVITY` |
+| 周度 18:05 | 已安装 | 只有每周最后一个交易日做事 |
+| watch（09:25–16:05）、watch 检查（每 2 分钟） | 已安装（2026-11-23） | Alpaca 模拟盘只读密钥在 `~/trading-agent-data/secrets/alpaca.env`；实测 `watch --once` 状态 OK |
+| 盘中采集与节拍 | 没装 | 每 5 分钟一个 `claude -p` 会话，等你决定 |
+| 控制通道 | 没装 | 本机命令行没有绑定用户，Telegram 没有专用机器人 |
+| 模型解释 | 没装 | 积压 1362 个请求，等你决定 |
+
+**注意**：launchd 运行的是项目目录里**当前检出的分支**。切换分支会改变定时任务执行的代码；上线期间请保持检出 `ops-go-live`（或合并后的 `main`）。
+
+停用：`launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily`（weekly 同理）。
+

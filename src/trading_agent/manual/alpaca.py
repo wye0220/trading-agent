@@ -197,7 +197,7 @@ def dump_dir(settings: Settings, account_id: str) -> Path:
 def adapter_for(settings: Settings, account_id: str, env: dict | None = None) -> AlpacaReadOnly:
     """有 API 密钥就直接读；否则读保存下来的 JSON 文件。"""
     from ..sources import alpaca_rest
-    cred = alpaca_rest.credentials(settings.project_root, env)
+    cred = alpaca_rest.credentials(settings.project_root, env, settings.data_root / "secrets")
     transport = alpaca_rest.RestTransport(*cred) if cred else DumpTransport(dump_dir(settings, account_id))
     return AlpacaReadOnly(settings, transport)
 

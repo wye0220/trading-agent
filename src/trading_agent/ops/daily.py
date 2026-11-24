@@ -37,10 +37,18 @@ def run_daily(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, re
         return {"status": "TOO_EARLY", "trading_day": d.isoformat(),
                 "runs_after_utc": sessions.rth_bounds(d)[1] + cfg.after_close_minutes * 60}
     ds = d.isoformat()
+    from .. import live_window
+    from . import tick as otick
+    lw = live_window.effective(con, settings.project_root)
+    cut = settings.dev_visible_through.isoformat() if settings.dev_visible_through else None
     scopes = []
     for text in cfg.scopes:
         scope = parse_scope(text, settings)
         item = {"scope": text}
+        if cut and ds > cut and not lw.is_live_day(scope.instrument_root, ds):
+            item["status"] = "SEALED_DAY"                  # 截止日之后、放行首日之前：数据是封存的，不复盘、不告警
+            scopes.append(item)
+            continue
         td = con.execute("SELECT complete, degraded FROM trading_days WHERE instrument_root=? AND trading_day=?",
                          (scope.instrument_root, ds)).fetchone()
         if td is None or not td[0]:
@@ -48,6 +56,13 @@ def run_daily(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, re
             item["status"] = "INCOMPLETE_DAY"
             scopes.append(item)
             continue
+        # 先补扫当天：没有盘中节拍时，纸面运行要到这里才看到当天的线。补扫的信号已过期，不挂单，
+        # 也不计入纸面运行验收（只数按时处理的交易日）。
+        try:
+            item["catch_up"] = otick.run(settings, con, cfg, registry=registry, risk_cfg=risk_cfg, engine_cfg=engine_cfg,
+                                         release_cfg=release_cfg, now=now)["status"]
+        except Exception as e:  # noqa: BLE001
+            item["catch_up"] = f"ERROR:{type(e).__name__}"
         run_id = paper_run_id(scope)
         has_run = con.execute("SELECT 1 FROM engine_runs WHERE run_id=?", (run_id,)).fetchone() is not None
         hold = reserved_window_start(con, text)
@@ -60,8 +75,12 @@ def run_daily(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, re
                 r = review.run(settings, con, scope, run_id, ds, seal_first=True)
                 item["review"] = r.get("status", "OK") if isinstance(r, dict) else "OK"
             except Exception as e:  # noqa: BLE001 — 复盘失败不挡监控
-                item["review"] = f"ERROR:{type(e).__name__}"
-                state.alert(con, "WARN", "REVIEW_FAILED", f"{scope} {ds} 复盘失败：{e}", scope=text, now=now)
+                code = getattr(e, "code", None)
+                if code == "NO_ACTIVITY":
+                    item["review"] = "NO_ACTIVITY"
+                else:
+                    item["review"] = f"ERROR:{code or type(e).__name__}"
+                    state.alert(con, "WARN", "REVIEW_FAILED", f"{scope} {ds} 复盘失败：{e}", scope=text, now=now)
         if has_run:
             led = rman.ledger_check(con, run_id, through_day=ds)
             item["ledger"] = led["status"]
@@ -86,7 +105,10 @@ def run_daily(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, re
             r = review.run(settings, con, None, None, ds, account_id=account, seal_first=True)
             manual = r.get("status", "OK") if isinstance(r, dict) else "OK"
         except Exception as e:  # noqa: BLE001
-            manual = f"ERROR:{type(e).__name__}"
+            code = getattr(e, "code", None)
+            manual = "NO_ACTIVITY" if code == "NO_ACTIVITY" else f"ERROR:{code or type(e).__name__}"
+            if manual.startswith("ERROR"):
+                state.alert(con, "WARN", "REVIEW_FAILED", f"人工轨 {account} {ds} 复盘失败：{e}", now=now)
     state.heartbeat(con, "daily", now, trading_day=ds)
     return {"status": "DONE", "trading_day": ds, "scopes": scopes, "manual_review": manual, "account": account}
 

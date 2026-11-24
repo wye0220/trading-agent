@@ -298,3 +298,15 @@ def test_alpaca_replace_chain_becomes_modified_events_and_order_fill_fallback(en
     mods = env.con.execute("SELECT COUNT(*) FROM manual_order_events WHERE broker_order_id='s3'"
                            " AND event_type='MODIFIED'").fetchone()[0]
     assert mods == 2                          # 改单的证据已入库，有计划时即可据此判定
+
+
+def test_alpaca_credentials_from_secrets_dir(tmp_path):
+    from trading_agent.sources import alpaca_rest
+    sec = tmp_path / "secrets"
+    sec.mkdir()
+    (sec / "alpaca.env").write_text("ALPACA_API_KEY=k1\nALPACA_SECRET_KEY=s1\n", encoding="utf-8")
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    assert alpaca_rest.credentials(proj, {}, sec) == ("k1", "s1")
+    assert alpaca_rest.credentials(proj, {"ALPACA_API_KEY": "k2", "ALPACA_SECRET_KEY": "s2"}, sec) == ("k2", "s2")
+    assert alpaca_rest.credentials(proj, {}, None) is None
