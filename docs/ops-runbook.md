@@ -2,7 +2,7 @@
 
 阶段 1–9 的每一步都能手动运行。这一阶段把它们串成可调度的流水：launchd 只调用 `ops` 和 `control` 两个子命令，手工运行完全等价。
 
-**已安装（2026-11-23，你授权）**：每日采集 `com.wenye.trading-agent-collect`（17:12）、盘后 `com.wenye.trading-agent-daily`（17:45）、周度 `com.wenye.trading-agent-weekly`（18:05）。其余是样例（`ops/launchd/*.plist.example`），没有安装。见第 9 节。
+**已安装（2026-11-23，你授权）**：每日采集 `com.wenye.trading-agent-collect`（17:12）、盘后 `com.wenye.trading-agent-daily`（17:45）、周度 `com.wenye.trading-agent-weekly`（18:05）、watch（09:25–16:05）、watch 检查（每 2 分钟）。其余是样例（`ops/launchd/*.plist.example`），没有安装。见第 9 节。
 
 配置：`config/ops.yaml`（scope、节拍、盘后、告警、模型调用）和 `config/control.yaml`（控制通道）。数值是预设，需要你确认。
 
@@ -10,9 +10,9 @@
 
 | 时刻（ET） | 动作 | 等价的手工命令 | 样例 |
 | --- | --- | --- | --- |
-| 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch` |
+| 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch`（已安装） |
 | 每 5 分钟（09:30–16:10） | 盘中取数，然后节拍 | `ops/launchd/run-intraday.sh`，或只跑 `python -m trading_agent ops --tick` | `com.wenye.trading-agent-intraday` |
-| 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check` |
+| 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check`（已安装） |
 | 每 30 秒 | 拉取 Telegram 控制通道 | `python -m trading_agent control --poll` | `com.wenye.trading-agent-control` |
 | 17:45（每日采集之后） | 盘后流水 | `python -m trading_agent ops --daily` | `com.wenye.trading-agent-daily`（已安装） |
 | 16:30 | 模型解释 | `python -m trading_agent ops --explain` | `com.wenye.trading-agent-explain` |
@@ -162,7 +162,7 @@ python -m trading_agent ops --explain              # 重新处理
 | 每日采集 17:12 | 已安装 | 2026-11-24 起的 Webull 线放行进运行库 |
 | 盘后 17:45 | 已安装 | 11-23 是封存日，试跑结果 `SEALED_DAY`；人工轨 `NO_ACTIVITY` |
 | 周度 18:05 | 已安装 | 只有每周最后一个交易日做事 |
-| watch、watch 检查 | **没装** | 项目里没有 Alpaca API 密钥，watch 只能读上次手动保存的快照，盘中每轮都会"数据过期"，watch 检查会每 2 分钟推 CRITICAL。要你把 Alpaca 模拟盘的只读密钥放进项目 `.env`（`ALPACA_API_KEY`、`ALPACA_SECRET_KEY`）之后再装 |
+| watch（09:25–16:05）、watch 检查（每 2 分钟） | 已安装（2026-11-23） | Alpaca 模拟盘只读密钥在 `~/trading-agent-data/secrets/alpaca.env`；实测 `watch --once` 状态 OK |
 | 盘中采集与节拍 | 没装 | 每 5 分钟一个 `claude -p` 会话，等你决定 |
 | 控制通道 | 没装 | 本机命令行没有绑定用户，Telegram 没有专用机器人 |
 | 模型解释 | 没装 | 积压 1362 个请求，等你决定 |

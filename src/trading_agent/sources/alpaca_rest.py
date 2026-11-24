@@ -1,6 +1,7 @@
 """Alpaca 模拟盘的只读网络访问。只发 GET，只连模拟盘地址；没有任何交易类请求。
 
-凭证：环境变量 ALPACA_API_KEY、ALPACA_SECRET_KEY（或 APCA_API_KEY_ID、APCA_API_SECRET_KEY），其次项目根目录的 .env。
+凭证：环境变量 ALPACA_API_KEY、ALPACA_SECRET_KEY（或 APCA_API_KEY_ID、APCA_API_SECRET_KEY），其次
+<data_root>/secrets/alpaca.env，最后项目根目录的 .env。
 凭证不打印、不写日志；出错时的消息不带请求头。
 """
 from __future__ import annotations
@@ -26,11 +27,14 @@ class AlpacaError(Exception):
     pass
 
 
-def credentials(project_root: Path, env: dict | None = None) -> tuple[str, str] | None:
+def credentials(project_root: Path, env: dict | None = None, secrets_dir: Path | None = None) -> tuple[str, str] | None:
+    """顺序：环境变量 > <data_root>/secrets/alpaca.env > 项目根目录的 .env。"""
     env = os.environ if env is None else env
-    file = read_env_file(Path(project_root) / ".env")
+    files = ([read_env_file(Path(secrets_dir) / "alpaca.env")] if secrets_dir else []) + \
+        [read_env_file(Path(project_root) / ".env")]
     for k, s in (("ALPACA_API_KEY", "ALPACA_SECRET_KEY"), ("APCA_API_KEY_ID", "APCA_API_SECRET_KEY")):
-        key, sec = env.get(k) or file.get(k), env.get(s) or file.get(s)
+        key = env.get(k) or next((f.get(k) for f in files if f.get(k)), None)
+        sec = env.get(s) or next((f.get(s) for f in files if f.get(s)), None)
         if key and sec:
             return key, sec
     return None
