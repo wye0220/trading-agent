@@ -40,6 +40,8 @@ launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily      # 停用
 
 **断流和迟到**：盘中应已到却没到的 5 分钟线（收线后再等 90 秒）超过 2 根记 CRITICAL `DATA_STALE`，1–2 根记 WARN `LATE_BAR`。
 
+**备用行情**：每轮在 Webull 取数之后读一次 trading-desk price-feed 的本地 TradingView 线（`collect --from-tvfeed`，只读）。Webull 当天一整天没有数据时引擎才会选它，那天记为降级日；在用时节拍记 WARN `BACKUP_SOURCE_IN_USE`。午盘中途 Webull 断了不会切过去。见 `docs/data-contract.md`。
+
 **现状**：盘中采集脚本 `run-intraday.sh` 每 5 分钟起一个 `claude -p` 会话，调 Webull 连接器取数。它只允许 `get_futures_bars` 和 `collect --from-mcp` 两个工具。开销和偶发失败要你权衡；失败时节拍照样运行，只会多出迟到告警，不会产生错误信号。不装它，节拍在真实环境里要到收盘后才看得到当天的线。
 
 ## 3. 盘后与周度

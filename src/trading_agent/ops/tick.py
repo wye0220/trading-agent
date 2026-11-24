@@ -17,14 +17,21 @@ from .config import OpsConfig
 LOCK = "tick"
 
 
-def latest_bar(con: sqlite3.Connection, settings: Settings, scope, now: int) -> tuple[str, int | None]:
+def latest_bar(con: sqlite3.Connection, settings: Settings, scope, now: int, source: str | None = None
+               ) -> tuple[str, int | None]:
     day, _ = _session_for(now)
     inst = settings.instrument(scope.instrument_root)
     cid = contracts.active_contract(inst, day, settings.roll_rules)
     r = con.execute("SELECT MAX(bar_end_utc) FROM bars WHERE contract_id=? AND timeframe=? AND trading_day=?"
-                    " AND session_type='RTH' AND available_at_utc<=? AND bar_end_utc<=?",
-                    (cid, scope.timeframe, day.isoformat(), now, now)).fetchone()
+                    " AND session_type='RTH' AND available_at_utc<=? AND bar_end_utc<=?"
+                    + (" AND source=?" if source else ""),
+                    (cid, scope.timeframe, day.isoformat(), now, now, *((source,) if source else ()))).fetchone()
     return day.isoformat(), r[0] if r else None
+
+
+def primary_source(settings: Settings) -> str | None:
+    from ..tvfeed import config as backup_config
+    return (backup_config(settings.project_root) or {}).get("primary_source")
 
 
 def lateness(scope, day: str, latest: int | None, now: int, grace: int) -> int:
@@ -61,6 +68,14 @@ def run(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, registry
             elif late > 0 and late >= cfg.late_bars_warn:
                 state.alert(con, "WARN", "LATE_BAR", f"{scope} 5 分钟线迟到 {late} 根", scope=text,
                             detail={"late_bars": late, "latest_bar_end_utc": latest}, now=now)
+            prim = primary_source(settings)
+            if prim and latest is not None and lateness(scope, day, latest, now, cfg.grace_seconds) == 0:
+                _, plat = latest_bar(con, settings, scope, now, prim)
+                if plat is None:
+                    # 主来源当天没有 RTH 线，引擎选了备用来源：选中它的日子记为降级日
+                    state.alert(con, "WARN", "BACKUP_SOURCE_IN_USE",
+                                f"{scope} 主来源 {prim} 今天没有 RTH 线，正在用备用行情（tvfeed，当天记为降级日）",
+                                scope=text, detail={"primary": prim}, now=now)
             wm = state.get(con, f"watermark:{text}") or {}
             if latest is None or latest <= (wm.get("bar_end_utc") or 0):
                 out.append({"scope": text, "status": "NO_NEW_BAR", "trading_day": day, "late_bars": late,

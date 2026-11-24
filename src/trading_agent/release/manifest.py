@@ -172,7 +172,11 @@ def paper_run_days(con: sqlite3.Connection, scope: Scope) -> list[str]:
             " FROM scan_events WHERE run_id=? AND run_mode='paper'", (run_id,)):
         if day and lag is not None:
             per.setdefault(day, []).append(lag)
-    return sorted(d for d, lags in per.items() if sum(x <= TIMELY_SECONDS for x in lags) >= TIMELY_SHARE * len(lags))
+    valid = {r[0] for r in con.execute("SELECT trading_day FROM trading_days WHERE instrument_root=? AND complete=1"
+                                       " AND degraded=0", (scope.instrument_root,))}
+    # 有效交易日才算（选中备用 tvfeed 的日子是降级日，不算）
+    return sorted(d for d, lags in per.items() if d in valid
+                  and sum(x <= TIMELY_SECONDS for x in lags) >= TIMELY_SHARE * len(lags))
 
 
 def acceptance(settings: Settings, con: sqlite3.Connection, scope: Scope, base: dict, cfg: ReleaseConfig, *,
