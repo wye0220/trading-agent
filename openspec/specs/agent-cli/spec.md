@@ -116,3 +116,10 @@ CLI SHALL 提供 `shadow`（`--register`、`--step`、`--finish`、`--status`）
 #### Scenario: 查看发布状态
 - **WHEN** 运行 `release --status`
 - **THEN** 列出各 scope 的 active 版本、入场权限、冻结原因和待批准的清单
+
+### Requirement: ops 与 control 子命令
+CLI SHALL 提供 `ops`（`--tick`、`--daily`、`--weekly`、`--dispatch`、`--explain`、`--dlq-replay`、`--health`）和 `control`（`--exec` 本机命令、`--poll` 拉取适配器消息）。输出 JSON 或中文短报。
+
+#### Scenario: 健康检查
+- **WHEN** 运行 `ops --health`
+- **THEN** 列出心跳、水位、锁、死信和恢复命令
