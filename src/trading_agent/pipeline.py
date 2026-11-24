@@ -28,7 +28,9 @@ def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | Non
         # 截止日是后来才设的：库里已有的、晚于它的真实 K 线移到库外（只留覆盖和内容摘要）
         moved = enforce_cutoff(settings, con, run_id, cutoff)
         if moved["rows_deleted"]:
-            touched = {t for t in touched if t[2] <= cutoff.isoformat()}
+            # 只留下还在库里的（截止日之前的，以及放行的实时行情）
+            touched = {t for t in touched if t[2] <= cutoff.isoformat() or con.execute(
+                "SELECT 1 FROM bars WHERE source=? AND contract_id=? AND trading_day=? LIMIT 1", t).fetchone()}
             last_days = {(r[0], r[1]) for r in con.execute(
                 "SELECT instrument_root, MAX(trading_day) FROM trading_days WHERE fixture = 0"
                 " GROUP BY instrument_root") if r[1]}
@@ -47,6 +49,9 @@ def run_ingest(settings: Settings, con: sqlite3.Connection, *, run_id: str | Non
                "dev_visible_through": cutoff.isoformat() if cutoff else None,
                "flags": [] if cutoff else [HOLDOUT_NOT_SET], **summary, **moved,
                "rebuilt": rebuild, "trading_days_refreshed": len(affected), "seconds": None}
+    if cutoff:
+        from . import live_window
+        summary["live_window"] = live_window.effective(con, settings.project_root).describe()
     if write_report:
         from . import report
         path = report_path or settings.project_root / "reports" / "data_availability.md"

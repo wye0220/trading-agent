@@ -63,6 +63,11 @@ def times(day):
     return [ER.bar_end(i, day) + 5 for i in range(-1, 14)] + [sessions.rth_bounds(day)[1] + 600]
 
 
+def full_times(day):
+    """整天逐根推进：纸面运行验收只数按时处理的交易日。"""
+    return [s + 300 + 5 for s in sessions.expected_rth_slots(day)] + [sessions.rth_bounds(day)[1] + 600]
+
+
 class Rel:
     def __init__(self, env):
         self.env = env
@@ -97,10 +102,10 @@ class Rel:
         finally:
             ro.close()
 
-    def paper_day(self, day, shadow=False):
+    def paper_day(self, day, shadow=False, full=False):
         self.add_day(day)
         out = []
-        for t in times(day):
+        for t in (full_times(day) if full else times(day)):
             out.append(self.scan(t))
             if shadow:
                 SH.step(self.s, self.con, self.env.scope, CFG, registry=TR.REG, now_utc=t, **KW)
@@ -122,8 +127,8 @@ class Rel:
         return RR.rollback(self.s, self.con, self.rw, self.env.scope, APP, CFG, reason, guard=NOGUARD, now=now)
 
     def initial(self, now=None):
-        """先跑一天常驻纸面运行（纸面运行验收），再建立并批准首次纸面基线。"""
-        self.paper_day(LIVE[0])
+        """先按时跑一天常驻纸面运行（纸面运行验收），再建立并批准首次纸面基线。"""
+        self.paper_day(LIVE[0], full=True)
         p = self.prepare("INITIAL", now=now)
         assert p["acceptance_passed"], p["manifest"]["acceptance"]
         r = self.approve(self.base["baseline_id"], p["manifest_hash"], now=now or at(LIVE[0], 17))
@@ -668,3 +673,11 @@ def test_release_package_boundaries():
         text = f.read_text(encoding="utf-8")
         for banned in ("on_bar(", "apply_bar(", "import fills", "requests", "socket"):
             assert banned not in text, (f, banned)
+
+
+def test_paper_run_acceptance_counts_only_timely_days(rel):
+    rel.add_day(LIVE[0])
+    rel.scan(sessions.rth_bounds(LIVE[0])[1] + 3600)          # 盘后一次性补跑：信号全过期，不算运行过
+    rel.paper_day(LIVE[1])                                     # 只有上午逐根推进，其余补跑：不到一半按时
+    rel.paper_day(LIVE[2], full=True)
+    assert RM.paper_run_days(rel.con, rel.env.scope) == [LIVE[2].isoformat()]

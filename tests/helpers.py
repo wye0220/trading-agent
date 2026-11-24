@@ -44,6 +44,7 @@ def _neutral_project() -> Path:
     edit("paths.yaml", lambda r: r.update(dev_visible_through=None))
     edit("risk.yaml", risk)
     edit("manual.yaml", lambda r: r.update(default_account_id=None))
+    (root / "config" / "live_data.yaml").write_text("{}\n", encoding="utf-8")     # 不放行实时行情；测试显式设置
 
     def accounts(r):
         for a in (r.get("accounts") or {}).values():

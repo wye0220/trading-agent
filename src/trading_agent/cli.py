@@ -248,7 +248,11 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
                     f"新 revision {s['revisions_added']:,}，跳过重复 {s['duplicates_skipped']:,}；"
                     f"丢弃价差代码 {s['spread_symbols_dropped']} 个、记录 {s['spread_records_dropped']:,} 条；"
                     f"截止日之后未入库 {s['withheld_after_cutoff']:,} 条"
-                    + (f"，从运行库移出 {s['moved_after_cutoff']:,} 条" if s["moved_after_cutoff"] else "") + "。"
+                    + (f"，从运行库移出 {s['moved_after_cutoff']:,} 条" if s["moved_after_cutoff"] else "")
+                    + (f"；放行的实时行情 {s.get('live_after_cutoff', 0):,} 条（只供纸面运行、影子和监控）"
+                       if s.get("live_after_cutoff") else "")
+                    + ("；实时行情放行冲突：" + "；".join(s["live_window"]["conflicts"])
+                       if (s.get("live_window") or {}).get("conflicts") else "") + "。"
                     + (f"\n异常：{s['anomalies']}" if s["anomalies"] else "")
                     + ("\n标记：" + "、".join(s["flags"]) if s["flags"] else "")
                     + (f"\n报告：{s['report']}" if s.get("report") else ""))

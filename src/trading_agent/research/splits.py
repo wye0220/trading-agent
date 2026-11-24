@@ -94,8 +94,10 @@ def _segment(kind: str, seq: int, days: list[dict], status: str, role: str | Non
 
 
 def build(settings: Settings, con: sqlite3.Connection, root: str, cfg: ResearchConfig) -> dict:
-    """算出切分（不写库）。"""
-    vis = visible_days(con, root)
+    """算出切分（不写库）。放行的实时行情日（config/live_data.yaml）不进任何段：作者看得到它们，不能当封存。"""
+    from .. import live_window
+    lw = live_window.load(settings.project_root)
+    vis = [d for d in visible_days(con, root) if d["fixture"] or not lw.is_live_day(root, d["day"])]
     if not vis:
         raise SplitError(f"{root} 没有任何交易日数据")
     fixture = all(d["fixture"] for d in vis)
@@ -113,7 +115,8 @@ def build(settings: Settings, con: sqlite3.Connection, root: str, cfg: ResearchC
     if fwd:
         segments.append(_segment(FORWARD, 1, fwd, "OPEN"))
 
-    held = withheld_days(settings, con, root, cut) if cut is not None else []
+    held = [d for d in (withheld_days(settings, con, root, cut) if cut is not None else [])
+            if not lw.is_live_day(root, d["day"])]
     need, cur, seq = cfg.capsule_valid_days, [], 0
     usage = [("BLIND_SCREEN", cfg.blind_screen_capsules), ("CONFIRM", cfg.confirm_capsules)]
     roles = [r for r, n in usage for _ in range(n)]

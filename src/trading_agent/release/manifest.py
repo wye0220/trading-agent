@@ -159,11 +159,20 @@ def ledger_check(con: sqlite3.Connection, run_id: str, *, through_day: str | Non
     return {"status": "FAIL" if probs else "PASS", "problems": probs[:20], "problem_count": len(probs)}
 
 
+TIMELY_SECONDS = 300          # 收线后这么久之内处理，才算按时
+TIMELY_SHARE = 0.5            # 当天至少这么多的 K 线按时处理，这一天才算纸面运行过
+
+
 def paper_run_days(con: sqlite3.Connection, scope: Scope) -> list[str]:
+    """常驻纸面运行按时处理过的交易日。盘后一次性补跑的日子不算：那时信号都已过期，不是真正的盘中运行。"""
     run_id = paper_run_id(scope)
-    return [r[0] for r in con.execute(
-        "SELECT DISTINCT json_extract(decision_json,'$.trading_day') FROM scan_events WHERE run_id=? AND run_mode='paper'"
-        " ORDER BY 1", (run_id,)) if r[0]]
+    per: dict[str, list[int]] = {}
+    for day, lag in con.execute(
+            "SELECT json_extract(decision_json,'$.trading_day'), as_of_utc - json_extract(decision_json,'$.signal_bar_end_utc')"
+            " FROM scan_events WHERE run_id=? AND run_mode='paper'", (run_id,)):
+        if day and lag is not None:
+            per.setdefault(day, []).append(lag)
+    return sorted(d for d, lags in per.items() if sum(x <= TIMELY_SECONDS for x in lags) >= TIMELY_SHARE * len(lags))
 
 
 def acceptance(settings: Settings, con: sqlite3.Connection, scope: Scope, base: dict, cfg: ReleaseConfig, *,
@@ -187,7 +196,7 @@ def acceptance(settings: Settings, con: sqlite3.Connection, scope: Scope, base: 
         days = paper_run_days(con, scope)
         need = cfg.min_paper_run_days
         out["paper_run"] = {"status": "PASS" if len(days) >= need else "NOT_MET", "days": len(days), "required": need,
-                            "detail": f"常驻纸面运行 {paper_run_id(scope)} 处理过 {len(days)} 个交易日，要求至少 {need} 个"}
+                            "detail": f"常驻纸面运行 {paper_run_id(scope)} 按时处理过 {len(days)} 个交易日，要求至少 {need} 个"}
     return out
 
 

@@ -62,9 +62,12 @@ def discover(data_root: Path) -> list[Path]:
 
 
 class Ingestor:
-    def __init__(self, settings: Settings, con: sqlite3.Connection, run_id: str, cutoff: date | None):
+    def __init__(self, settings: Settings, con: sqlite3.Connection, run_id: str, cutoff: date | None, *, live=None):
+        from . import live_window
         self.settings, self.con, self.run_id = settings, con, run_id
         self.cutoff = cutoff.isoformat() if cutoff else None
+        # 截止日之后放行的实时行情（config/live_data.yaml）；与已封存日期冲突的品种不放行
+        self.live = live if live is not None else live_window.effective(con, settings.project_root)
         self.delay = settings.available_at_delay_seconds
         self.counts: Counter = Counter()
         self.touched: set[tuple[str, str, str]] = set()
@@ -104,7 +107,9 @@ class Ingestor:
                                      b.bar_start_utc, b.bar_end_utc), file_id)
                 continue
             ds = day.isoformat()
-            if cutoff and ds > cutoff and not b.fixture:
+            if cutoff and ds > cutoff and not b.fixture and self.live.allows(b.source, b.instrument_root, ds):
+                self.counts["live_after_cutoff"] += 1           # 放行：只供纸面运行、影子和监控
+            elif cutoff and ds > cutoff and not b.fixture:
                 self.counts["withheld_after_cutoff"] += 1
                 self.withhold(b.source, b.contract_id, b.instrument_root, b.timeframe, ds, sess, b.bar_start_utc,
                               b.open, b.high, b.low, b.close, b.volume)
@@ -229,30 +234,42 @@ def enforce_cutoff(settings: Settings, con: sqlite3.Connection, run_id: str, cut
     """
     cut = cutoff.isoformat()
     ing = Ingestor(settings, con, run_id, cutoff)
+    # 放行的实时行情留在库里：按（品种、来源、首日）排除
+    keep_bars, keep_args, keep_days, keep_day_args = [], [], [], []
+    for root, f in ing.live.from_day.items():
+        if ing.live.sources:
+            keep_bars.append(f"(instrument_root=? AND trading_day>=? AND source IN ({','.join('?' * len(ing.live.sources))}))")
+            keep_args += [root, f, *ing.live.sources]
+        keep_days.append("(instrument_root=? AND trading_day>=?)")
+        keep_day_args += [root, f]
+    nb = (" AND NOT (" + " OR ".join(keep_bars) + ")") if keep_bars else ""
+    nd = (" AND NOT (" + " OR ".join(keep_days) + ")") if keep_days else ""
     rows = con.execute(
         "SELECT source, contract_id, instrument_root, timeframe, trading_day, session_type, bar_start_utc,"
-        " open, high, low, close, volume FROM bars b WHERE trading_day > ? AND derived = 0 AND fixture = 0"
+        " open, high, low, close, volume FROM bars b WHERE trading_day > ? AND derived = 0 AND fixture = 0" + nb +
         " AND revision = (SELECT MAX(revision) FROM bars x WHERE x.source=b.source AND x.contract_id=b.contract_id"
-        "   AND x.timeframe=b.timeframe AND x.bar_start_utc=b.bar_start_utc)", (cut,))
+        "   AND x.timeframe=b.timeframe AND x.bar_start_utc=b.bar_start_utc)", (cut, *keep_args))
     moved = 0
     for r in rows:
         ing.withhold(r[0], r[1], r[2], r[3], r[4], r[5], r[6], *r[7:12])
         moved += 1
-    if not moved and con.execute("SELECT 1 FROM bars WHERE trading_day > ? AND fixture = 0 LIMIT 1",
-                                 (cut,)).fetchone() is None:
+    if not moved and con.execute("SELECT 1 FROM bars WHERE trading_day > ? AND fixture = 0" + nb + " LIMIT 1",
+                                 (cut, *keep_args)).fetchone() is None:
         return {"moved_after_cutoff": 0, "rows_deleted": 0}
     sources = sorted({k[0] for k in ing.withheld})
     with con:
         ing.flush_withheld()
-        deleted = con.execute("DELETE FROM bars WHERE trading_day > ? AND fixture = 0", (cut,)).rowcount
-        con.execute("DELETE FROM trading_days WHERE trading_day > ? AND fixture = 0", (cut,))
+        deleted = con.execute("DELETE FROM bars WHERE trading_day > ? AND fixture = 0" + nb, (cut, *keep_args)).rowcount
+        con.execute("DELETE FROM trading_days WHERE trading_day > ? AND fixture = 0" + nd, (cut, *keep_day_args))
         con.execute("DELETE FROM rth_days WHERE trading_day > ? AND NOT EXISTS (SELECT 1 FROM bars b WHERE"
                     " b.source = rth_days.source AND b.contract_id = rth_days.contract_id"
                     " AND b.trading_day = rth_days.trading_day)", (cut,))
         con.execute("DELETE FROM reference_levels WHERE trading_day > ? AND NOT EXISTS (SELECT 1 FROM trading_days t"
                     " WHERE t.instrument_root = reference_levels.instrument_root"
                     " AND t.trading_day = reference_levels.trading_day)", (cut,))
-        con.execute("DELETE FROM market_snapshots WHERE trading_day > ? AND fixture = 0", (cut,))
+        con.execute("DELETE FROM market_snapshots WHERE trading_day > ? AND fixture = 0 AND NOT EXISTS (SELECT 1 FROM"
+                    " trading_days t WHERE t.trading_day = market_snapshots.trading_day AND t.fixture = 0"
+                    " AND t.trading_day > ?)", (cut, cut))
         if sources:
             ph = ",".join("?" * len(sources))
             con.execute(f"DELETE FROM data_anomalies WHERE trading_day > ? AND source IN ({ph})"
@@ -373,6 +390,7 @@ def ingest_files(settings: Settings, con: sqlite3.Connection, run_id: str, cutof
         "spread_symbols_dropped": counts.get("spread_symbols", 0),
         "spread_records_dropped": counts.get("spread_records", 0),
         "withheld_after_cutoff": counts.get("withheld_after_cutoff", 0),
+        "live_after_cutoff": counts.get("live_after_cutoff", 0),
         "anomalies": {k.split(":", 1)[1]: v for k, v in counts.items() if k.startswith("anomaly:")},
     }
     return summary, ing.touched
