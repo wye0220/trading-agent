@@ -72,6 +72,7 @@ def accept(settings: Settings, cfg: EvalConfig, *, user: str | None = None, now:
     p = manifest_path(settings)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(body, indent=1, sort_keys=True), encoding="utf-8")
+    os.chmod(p, 0o644)                  # 作者身份能读（发布批准要核对），不能改
     return body
 
 

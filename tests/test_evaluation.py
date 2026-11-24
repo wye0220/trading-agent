@@ -408,7 +408,8 @@ def test_isolation_check_reports_readable_paths(tmp_path, env):
 def test_evaluator_digest_tracks_code_and_config():
     a = GD.evaluator_digest(H.PROJECT)
     assert a == GD.evaluator_digest(H.PROJECT) and len(a) == 64
-    assert GD.evaluator_digest(H.TEST_PROJECT) == a
+    # 测试项目清掉了个人的封存路径，config/evaluation.yaml 不同，摘要也就不同：摘要跟踪配置
+    assert GD.evaluator_digest(H.TEST_PROJECT) != a
 
 
 def test_synthetic_regression_runs_listed_files(env):
@@ -483,3 +484,12 @@ def test_evaluation_has_no_signal_fill_or_release_logic():
             for banned in ("active_pointers", "open_release", "place_", "requests", "urllib", "socket", "anthropic",
                            "trigger_ticks <", "evaluate_fill", " exec(", " eval(", "importlib"):
                 assert banned not in text, (f.name, banned)
+
+
+def test_accepted_manifest_is_read_only_for_others(env, tmp_path):
+    import dataclasses
+    import stat
+    s = dataclasses.replace(env.settings, holdout_root=tmp_path / "hold")
+    GD.accept(s, ecfg(), user="evaluator")
+    mode = stat.S_IMODE(GD.manifest_path(s).stat().st_mode)
+    assert mode == 0o644
