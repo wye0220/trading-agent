@@ -54,6 +54,6 @@ monitor:
 
 # 冻结原因与解除政策
 freeze:
-  auto_release: [DATA, DAILY_LOSS]   # DATA：数据恢复后自动解除；DAILY_LOSS：下一个交易日自动解除
+  auto_release: [DATA, DAILY_LOSS, CONTEXT]   # DATA：数据恢复后；DAILY_LOSS：下一个交易日；CONTEXT：当日约束到期（阶段 10）
   human_release: [MANUAL, MONITOR]   # 只能由批准人在终端里解除
   approval_release: [RELEASE]        # 只能由新的批准解除

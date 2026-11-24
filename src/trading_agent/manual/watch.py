@@ -268,12 +268,16 @@ def _evaluate(settings, con, snap: AccountSnapshot, sid: str, scope, strategy, r
 
 
 def run_loop(poll: Callable[[], dict], interval_seconds: int, *, iterations: int | None = None,
-             sleep: Callable[[float], None] = time.sleep, emit: Callable[[dict], None] = lambda r: None) -> int:
-    """按间隔循环调用 poll。iterations 为 None 时一直运行。返回执行的轮数。"""
+             sleep: Callable[[float], None] = time.sleep, emit: Callable[[dict], None] = lambda r: None,
+             interval_fn: Callable[[], int] | None = None) -> int:
+    """按间隔循环调用 poll。iterations 为 None 时一直运行。返回执行的轮数。
+
+    interval_fn 给了时每轮重读间隔（控制通道的 watch-interval 下一轮起生效）。
+    """
     n = 0
     while iterations is None or n < iterations:
         emit(poll())
         n += 1
         if iterations is None or n < iterations:
-            sleep(interval_seconds)
+            sleep(interval_fn() if interval_fn else interval_seconds)
     return n

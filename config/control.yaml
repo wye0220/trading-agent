@@ -1,0 +1,13 @@
+# 控制通道（阶段 10）。只有身份校验通过、发送者在下面绑定的命令才生效。
+# Telegram 用专用机器人（不复用 trading-desk 的机器人，免得两边抢消息）：
+#   token 放在 <data_root>/secrets/control-telegram.env（CONTROL_TELEGRAM_BOT_TOKEN=...），不进版本控制。
+token_ttl_seconds: 120               # unfreeze 等二次确认的令牌有效期
+
+adapters:
+  cli:
+    enabled: true
+    users: {}                        # 系统用户名 → {approver: true/false}；例如 wenye: {approver: true}
+  telegram:
+    enabled: false
+    chat_id: null                    # 只接受这个聊天里的消息
+    users: {}                        # Telegram 用户 ID（字符串）→ {approver: true/false}

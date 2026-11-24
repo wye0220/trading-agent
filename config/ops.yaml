@@ -1,0 +1,30 @@
+# 调度、告警与恢复（阶段 10）。数值是实验预设，需要你确认。
+version: ops-v1
+
+scopes:                              # 盘中节拍、盘后流水和周度聚合遍历的 scope
+  - pa_brooks:ES:RTH:5m
+
+tick:
+  lock_ttl_seconds: 240              # 节拍运行锁的有效期；过期的锁可被下一次节拍接管
+  late_bars_warn: 1                  # 盘中最新可用线落后超过这么多根：WARN
+  late_bars_critical: 2              # 落后超过这么多根：CRITICAL（行情断流）
+  grace_seconds: 90                  # 收线后多久还没到才算落后
+
+daily:
+  after_close_minutes: 15            # 收盘后多久跑盘后流水（常规日 16:15 ET，提前收盘随日历）
+  account: null                      # 人工轨账户；空 = config/manual.yaml 的 default_account_id
+
+alerts:
+  notifier: telegram                 # telegram（ops/notify-telegram.sh）或 none
+  silence_seconds:                   # 同一去重键在这么长时间内只推送一次
+    default: 1800
+    DATA_STALE: 900
+    LATE_BAR: 1800
+    WATCH_STOPPED: 600
+    NAKED_POSITION: 300
+  push_levels: [CRITICAL, WARN, INFO]
+
+explain:
+  model: sonnet                      # claude -p 用的模型
+  timeout_seconds: 180
+  batch: 10                          # 每次最多处理多少个请求；重试上限取 config/engine.yaml 的 llm.max_retries

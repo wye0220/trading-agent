@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  样例，未安装（阶段 10）。交易日 16:15：线到齐 → 封存复盘 → 账本检查 → 发布后监控（提前收盘日照样在 16:15 跑，已过收盘）。
+  安装（要你授权）：cp 到 ~/Library/LaunchAgents/（去掉 .example），然后
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.wenye.trading-agent-daily.plist
+  停用：launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily
+  等价的手工命令见 docs/ops-runbook.md。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.wenye.trading-agent-daily</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/zsh</string>
+        <string>/Users/wenye/trading-agent/ops/launchd/run-ops.sh</string>
+        <string>daily</string>
+    </array>
+    <key>WorkingDirectory</key><string>/Users/wenye/trading-agent</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TZ</key><string>America/New_York</string>
+        <key>PATH</key><string>/Users/wenye/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Weekday</key><integer>1</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>2</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>3</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>4</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Weekday</key><integer>5</integer><key>Hour</key><integer>16</integer><key>Minute</key><integer>15</integer></dict>
+    </array>
+    <key>RunAtLoad</key><false/>
+</dict>
+</plist>

@@ -22,7 +22,7 @@ def test_help_lists_all_subcommands(capsys):
         main(["--help"])
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert len(COMMANDS) == 16 and len(NOT_IMPL) == 0     # 阶段 9 之后全部子命令都已实现
+    assert len(COMMANDS) == 18 and len(NOT_IMPL) == 0     # 阶段 9 之后全部子命令都已实现
     for name in ("ingest", "collect", "scan", "plan", "watch", "replay", "review", "evolve", "evaluate", "shadow",
                  "release", "rollback", "freeze", "monitor"):
         assert f"\n    {name} " in out

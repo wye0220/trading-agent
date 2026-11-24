@@ -15,9 +15,10 @@ COMMANDS = {
     "ingest": 1, "collect": 1, "scan": 4,
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "memory": 7, "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
+    "ops": 10, "control": 10,
 }
 IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory", "evaluate",
-               "shadow", "release", "rollback", "freeze", "monitor"}
+               "shadow", "release", "rollback", "freeze", "monitor", "ops", "control"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -31,6 +32,8 @@ HELP = {
     "release": "发布清单、人工批准（终端里手动确认）和发布状态",
     "rollback": "把一个 scope 回滚到上一已批准的纸面版本（没有上一版本时冻结并停用入场）",
     "freeze": "冻结或解除一个 scope 的新入场（按原因记录和解除）", "monitor": "发布后监控：滚动指标、触发即冻结并告警",
+    "ops": "调度动作：盘中节拍、盘后与周度流水、告警分发、模型调用、死信、健康检查（launchd 只调用它）",
+    "control": "控制通道：执行一条经身份校验的命令，或拉取 Telegram 消息",
 }
 
 
@@ -153,6 +156,21 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--status", action="store_true", help="只显示冻结状态")
         if name == "monitor":
             sp.add_argument("--day", metavar="YYYY-MM-DD", help="按这个交易日收盘计算（缺省为最近一个交易日）")
+        if name == "ops":
+            sp.add_argument("--tick", action="store_true", help="盘中节拍：有新收线的 5 分钟线才扫描各 scope 并推进影子")
+            sp.add_argument("--daily", action="store_true", help="盘后：确认线到齐、封存复盘、账本检查、发布后监控")
+            sp.add_argument("--weekly", action="store_true", help="每周最后一个交易日：按 scope 聚合")
+            sp.add_argument("--day", metavar="YYYY-MM-DD", help="--daily／--weekly 的交易日（补跑用）")
+            sp.add_argument("--dispatch", action="store_true", help="分发未推送的告警（去重、静默）")
+            sp.add_argument("--watch-check", action="store_true", help="交易时段内检查 watch 心跳，停了就记 CRITICAL")
+            sp.add_argument("--explain", action="store_true", help="用 claude -p 处理解释请求队列（输出过 schema）")
+            sp.add_argument("--dlq", action="store_true", help="列出死信队列")
+            sp.add_argument("--dlq-replay", metavar="TASK_ID", help="把死信放回队列（ALL = 全部）")
+            sp.add_argument("--health", action="store_true", help="心跳、水位、锁、死信、待发告警和恢复命令")
+        if name == "control":
+            sp.add_argument("--exec", dest="exec_text", metavar="命令", help="以当前系统用户执行一条控制命令（须在 config/control.yaml 绑定）")
+            sp.add_argument("--poll", action="store_true", help="拉取 Telegram 控制通道的新消息并执行（须启用并配置）")
+            sp.add_argument("--audit", action="store_true", help="最近的控制命令审计")
         if name not in IMPLEMENTED:
             sp.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     return p
@@ -274,6 +292,10 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
             return _evaluate(args, settings, con, scope, registry)
         if args.command in ("shadow", "release", "rollback", "freeze", "monitor"):
             return _release(args, settings, con, scope, registry)
+        if args.command == "ops":
+            return _ops(args, settings, con, registry)
+        if args.command == "control":
+            return _control(args, settings, con, registry)
         if args.command == "evolve":
             return _evolve(args, settings, con, scope, registry)
 
@@ -530,6 +552,105 @@ def _release(args, settings, con, scope, registry) -> int:
     finally:
         if ro is not None:
             ro.close()
+
+
+def _ops(args, settings, con, registry) -> int:
+    import time
+    from .engine.config import load_engine, load_risk
+    from .manual.config import load_manual
+    from .ops import alerts as oalerts
+    from .ops import daily as odaily
+    from .ops import explain as oexplain
+    from .ops import health as ohealth
+    from .ops import tick as otick
+    from .ops.config import load_ops
+    from .release.config import load_release
+    cfg = load_ops(settings.project_root)
+    reg = _registry(registry)
+    risk_cfg, engine_cfg = load_risk(settings.project_root), load_engine(settings.project_root)
+    notify = oalerts.notifier_for(settings, cfg)
+    if args.tick:
+        r = otick.run(settings, con, cfg, registry=reg, risk_cfg=risk_cfg, engine_cfg=engine_cfg,
+                      release_cfg=load_release(settings.project_root))
+        r["dispatch"] = oalerts.dispatch(con, cfg, notify)
+        text = f"节拍 {r['status']}：" + "；".join(f"{x['scope']} {x['status']}" + (f"（落后 {x['late_bars']} 根）" if x.get("late_bars") else "")
+                                               for x in r.get("scopes", []))
+    elif args.daily:
+        r = odaily.run_daily(settings, con, cfg, registry=reg, risk_cfg=risk_cfg, engine_cfg=engine_cfg,
+                             release_cfg=load_release(settings.project_root), manual_cfg=load_manual(settings.project_root),
+                             day=args.day)
+        r["dispatch"] = oalerts.dispatch(con, cfg, notify)
+        text = f"盘后 {r['status']} {r.get('trading_day')}：" + "；".join(
+            f"{x['scope']} {x.get('status')} 复盘 {x.get('review')} 账本 {x.get('ledger')} 监控 {x.get('monitor')}"
+            for x in r.get("scopes", [])) + (f"；人工轨 {r['manual_review']}" if r.get("manual_review") else "")
+    elif args.weekly:
+        r = odaily.run_weekly(settings, con, cfg, registry=reg, manual_cfg=load_manual(settings.project_root), day=args.day)
+        r["dispatch"] = oalerts.dispatch(con, cfg, notify)
+        text = f"周度 {r['status']} {r.get('trading_day')}"
+    elif args.dispatch:
+        r = oalerts.dispatch(con, cfg, notify)
+        text = f"分发 {r['dispatched']} 条：{r['by_status']}"
+    elif args.watch_check:
+        acct = cfg.account or load_manual(settings.project_root).default_account_id
+        r = oalerts.watch_check(con, settings, acct, int(time.time()))
+        r["dispatch"] = oalerts.dispatch(con, cfg, notify)
+        text = f"watch 检查：{r['status']}"
+    elif args.explain:
+        r = oexplain.run(settings, con, cfg, engine_cfg)
+        r["dispatch"] = oalerts.dispatch(con, cfg, notify)
+        text = f"解释请求：完成 {r['done']}，待重试 {r['retry']}，转入死信 {r['dead']}"
+    elif args.dlq:
+        rows = oexplain.dlq_list(con)
+        r = {"status": "OK", "dead_letters": rows}
+        text = "\n".join(f"{x['task_id']} {x['task_type']} {x['status']} 尝试 {x['attempts']}：{x['error']}" for x in rows) or "死信队列是空的。"
+    elif args.dlq_replay:
+        r = oexplain.dlq_replay(con, args.dlq_replay)
+        text = f"放回队列 {len(r['replayed'])} 条。再运行 ops --explain 处理。"
+    else:
+        r = ohealth.report(con)
+        hb = "；".join(f"{k} {v['age_seconds']} 秒前" for k, v in r["heartbeats"].items()) or "没有心跳记录（调度没装）"
+        text = (f"心跳：{hb}\n水位：{r['watermarks'] or '无'}\n锁：{[x['name'] for x in r['locks']] or '无'}\n"
+                f"死信 {r['dead_letters']}，待解释 {r['pending_explanations']}，待分发告警 {r['undelivered_alerts']}\n"
+                "恢复命令见 docs/ops-runbook.md 或 --json 的 recovery。")
+    _emit(r, args.json, text)
+    return 0
+
+
+def _control(args, settings, con, registry) -> int:
+    from .ops import adapters
+    from .ops import control as octl
+    from .ops.config import load_control, load_ops
+    ccfg, ocfg = load_control(settings.project_root), load_ops(settings.project_root)
+    reg = _registry(registry)
+    if args.exec_text:
+        if not ccfg.cli_enabled:
+            _emit({"status": "REFUSED", "reason": "CLI_DISABLED"}, args.json, "本机命令行通道已停用")
+            return 1
+        r = octl.execute(settings, con, adapters.cli_message(args.exec_text), ccfg, ocfg, registry=reg)
+        _emit(r, args.json, f"{r['status']}" + (f"（{r.get('reason')}）" if r.get("reason") else "") +
+              (f"：{r.get('text') or r.get('message') or ''}"))
+        return 0 if r["status"] in ("DONE", "PENDING_CONFIRM", "DUPLICATE") else 1
+    if args.poll:
+        token = adapters.telegram_token(settings)
+        if not ccfg.telegram_enabled or not token:
+            _emit({"status": "NOT_CONFIGURED"}, args.json,
+                  "Telegram 控制通道没有启用：config/control.yaml 里启用并绑定用户，token 放 <data_root>/secrets/control-telegram.env")
+            return 1
+        tr = adapters.telegram_transport(token)
+        res = []
+        for m in adapters.telegram_poll(con, ccfg, tr):
+            r = octl.execute(settings, con, m, ccfg, ocfg, registry=reg)
+            if m.verified:
+                adapters.telegram_reply(ccfg, tr, f"{r['status']} {r.get('reason') or ''} {r.get('text') or r.get('message') or ''}")
+            res.append({"message_ref": m.message_ref, "status": r["status"], "reason": r.get("reason")})
+        _emit({"status": "OK", "messages": res}, args.json, f"处理 {len(res)} 条消息")
+        return 0
+    rows = [dict(r) for r in con.execute("SELECT command_id, channel, user_id, command, status, reason, created_at_utc"
+                                         " FROM control_commands ORDER BY created_at_utc DESC LIMIT 20")]
+    _emit({"status": "OK", "commands": rows}, args.json,
+          "\n".join(f"{x['command_id']} {x['channel']}:{x['user_id']} {x['command']} {x['status']} {x['reason'] or ''}" for x in rows)
+          or "没有控制命令记录。")
+    return 0
 
 
 def _registry(registry):
@@ -997,12 +1118,19 @@ def _watch(args, settings, con, scope, registry, adapter) -> int:
         _emit({"status": "ERROR", "error": "CONFIG", "message": "没有账户标识"}, args.json,
               "错误：没有账户标识：用 --account 指定，或在 config/manual.yaml 里填 default_account_id")
         return 2
-    try:
+    def current_interval() -> int:
+        """命令行 > 控制通道的 watch-interval > 已生效的 Memory 偏好 > config/watch.yaml。"""
         override = args.interval
-        if override is None:                # 已生效的偏好排在命令行之后、配置文件之前
+        if override is None:
+            from .ops import state as ops_state
+            override = (ops_state.get(con, "watch_interval_override") or {}).get("seconds")
+        if override is None:
             from .memory import context as mctx
             override = mctx.preferences(settings, con, scope).get("watch_poll_interval_seconds")
-        interval = watch_mod.resolve_interval(settings.watch, override)
+        return watch_mod.resolve_interval(settings.watch, override)
+
+    try:
+        interval = current_interval()
     except ValueError as e:
         _emit({"status": "ERROR", "error": "CONFIG", "message": str(e)}, args.json, f"错误：{e}")
         return 2
@@ -1012,8 +1140,21 @@ def _watch(args, settings, con, scope, registry, adapter) -> int:
     risk_cfg = risk_for_account(settings.project_root, account, base=risk_cfg)
 
     def poll():
-        return watch_mod.poll_once(settings, con, adapter, account, scope=scope, strategy=strategy, risk_cfg=risk_cfg,
-                                   manual_cfg=manual_cfg, interval_seconds=interval)
+        nonlocal interval
+        try:
+            interval = current_interval()
+        except ValueError:
+            pass                                      # 覆盖值不合法时沿用上一轮的间隔
+        r = watch_mod.poll_once(settings, con, adapter, account, scope=scope, strategy=strategy, risk_cfg=risk_cfg,
+                                manual_cfg=manual_cfg, interval_seconds=interval)
+        try:                                          # 纪律提醒即时推送，不进日终摘要
+            from .ops import alerts as ops_alerts
+            from .ops.config import load_ops
+            ocfg = load_ops(settings.project_root)
+            ops_alerts.dispatch(con, ocfg, ops_alerts.notifier_for(settings, ocfg))
+        except Exception as e:  # noqa: BLE001 — 推送失败不影响提醒本身（已写进 alerts 表）
+            r["dispatch_error"] = f"{type(e).__name__}: {e}"
+        return r
 
     def emit(r):
         lines = [f"[watch] {r['as_of_utc']} 账户 {account} 间隔 {interval}s 状态 {r['status']}"
@@ -1022,7 +1163,7 @@ def _watch(args, settings, con, scope, registry, adapter) -> int:
         _emit(r, args.json, "\n".join(lines))
 
     try:
-        watch_mod.run_loop(poll, interval, iterations=1 if args.once else None, emit=emit)
+        watch_mod.run_loop(poll, interval, iterations=1 if args.once else None, emit=emit, interval_fn=lambda: interval)
     except KeyboardInterrupt:
         pass
     return 0

@@ -70,6 +70,11 @@ def check_approval(settings: Settings, cfg: ReleaseConfig, approval: Approval | 
         if Path(settings.release_db).resolve() == real:
             raise ReleaseError("NO_HUMAN_APPROVAL", "测试通道不能写项目的发布库")
         return approval
+    if approval.channel == "CONTROL_CHANNEL":
+        # 控制通道已校验来源、绑定用户和批准人身份（config/control.yaml）
+        if not approval.actor.startswith("control:"):
+            raise ReleaseError("NO_HUMAN_APPROVAL", "控制通道的批准缺少经校验的发送者")
+        return approval
     if approval.actor not in cfg.approvers:
         raise ReleaseError("NO_HUMAN_APPROVAL", f"{approval.actor} 不在批准人名单里（config/release.yaml）")
     return approval

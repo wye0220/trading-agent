@@ -12,7 +12,7 @@ import yaml
 from ..config import ConfigError
 
 WINDOW_KINDS = ("OPERATIONAL_ACCEPTANCE", "FORWARD_HOLDOUT")
-FREEZE_CAUSES = ("DATA", "DAILY_LOSS", "MANUAL", "MONITOR", "RELEASE")
+FREEZE_CAUSES = ("DATA", "DAILY_LOSS", "MANUAL", "MONITOR", "RELEASE", "CONTEXT")
 
 
 @dataclass(frozen=True)

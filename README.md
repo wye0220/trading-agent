@@ -16,7 +16,7 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | 7 Memory 存储 | 完成（结构化条目、版本快照与回滚；市场事实和执行模式等阶段 8 评测后才能生效） | `docs/memory.md` |
 | 8 独立评测 | 完成（预登记、盲筛、正式确认、事故回归库；隔离验收未通过，真实窗口未解封） | `docs/evaluation-protocol.md` |
 | 9 影子、发布、回滚与监控 | 完成（在临时库上演练了完整的纸面晋级；真实 scope 还没有 active 版本，批准要你在终端里确认） | `docs/release-policy.md` |
-| 10 调度、告警与控制通道 | 未开始 | — |
+| 10 调度、告警与控制通道 | 完成（样例未安装；盘中采集和 Telegram 控制通道等你授权和配置） | `docs/ops-runbook.md` |
 
 ## 环境
 
@@ -89,6 +89,10 @@ uv run python -m trading_agent release --status                                #
 uv run python -m trading_agent release --initial-baseline                      # 首次纸面基线的清单（批准要在终端里手动确认）
 uv run python -m trading_agent freeze --reason "..."                           # 冻结新入场；--unfreeze 解除
 uv run python -m trading_agent monitor                                         # 发布后监控（收盘后）
+uv run python -m trading_agent ops --health                                    # 心跳、水位、锁、死信、待发告警、恢复命令
+uv run python -m trading_agent ops --tick                                      # 盘中节拍（有新收线才扫描）
+uv run python -m trading_agent ops --daily                                     # 盘后：封存复盘、账本检查、监控
+uv run python -m trading_agent control --exec "freeze ALL 盘前演练"             # 控制通道（本机，须先绑定用户）
 
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect

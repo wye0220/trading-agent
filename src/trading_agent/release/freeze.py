@@ -104,6 +104,17 @@ def apply_policies(con: sqlite3.Connection, scope: Scope, now: int) -> list[dict
             fid = runner.set_freeze(con, scope, x["risk_domain"], frozen=False, cause="DAILY_LOSS",
                                     reason=f"下一个交易日自动解除（冻结于 {fday}）", actor="policy")
             out.append({"cause": "DAILY_LOSS", "risk_domain": x["risk_domain"], "freeze_event_id": fid})
+    # CONTEXT：控制通道的当日约束（禁止新入场）生效时冻结整个 scope，到期自动解除（阶段 10）
+    from ..ops.context import no_entry
+    ctx = no_entry(con, str(scope), now)
+    frozen = any(x["cause"] == "CONTEXT" for x in active_causes(con, scope))
+    if ctx and not frozen:
+        fid = runner.set_freeze(con, scope, SCOPE_WIDE, frozen=True, cause="CONTEXT",
+                                reason=f"当日约束 {ctx['constraint_id']}", actor="policy")
+        out.append({"cause": "CONTEXT", "action": "FREEZE", "freeze_event_id": fid})
+    elif frozen and not ctx:
+        fid = runner.set_freeze(con, scope, SCOPE_WIDE, frozen=False, cause="CONTEXT", reason="当日约束到期", actor="policy")
+        out.append({"cause": "CONTEXT", "action": "UNFREEZE", "freeze_event_id": fid})
     return out
 
 

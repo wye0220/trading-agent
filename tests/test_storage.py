@@ -54,7 +54,7 @@ def test_reinit_keeps_data(env):
     assert db.migrate(env.con, "runtime") == []
     con2 = db.open_runtime(env.settings)
     assert con2.execute("SELECT COUNT(*) FROM alerts").fetchone()[0] == 1
-    assert db.applied_migrations(con2) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release"]
+    assert db.applied_migrations(con2) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release", "0010_ops"]
     con2.close()
 
 

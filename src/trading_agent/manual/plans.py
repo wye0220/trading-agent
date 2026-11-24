@@ -176,18 +176,28 @@ def precheck(settings: Settings, con: sqlite3.Connection, *, plan_id: str, accou
     if dec.reason_code == "DAILY_LIMIT_HIT":
         flags.append("DAILY_LIMIT_HIT")
 
-    conclusion = "BLOCKED_BY_RISK" if not dec.passed else ("ALIGNED" if alignment == "ALIGNED" else "DEVIATES")
+    # 控制通道的当日约束（只能收紧）：禁止新入场、手数上限（阶段 10）
+    from ..ops import context as ctxmod
+    risk_status, risk_reason = dec.status, dec.reason_code
+    blocked = not dec.passed
+    if ctxmod.no_entry(con, str(scope), now_utc):
+        blocked, risk_status, risk_reason = True, "BLOCKED", "CONTEXT_NO_ENTRY"
+    else:
+        cap = ctxmod.max_qty(con, str(scope), now_utc)
+        if cap is not None and inp.quantity > cap:
+            blocked, risk_status, risk_reason = True, "BLOCKED", f"CONTEXT_MAX_QTY:{cap}"
+    conclusion = "BLOCKED_BY_RISK" if blocked else ("ALIGNED" if alignment == "ALIGNED" else "DEVIATES")
     tick = inst.tick_size
     px = lambda t: "无" if t is None else str(t * tick)       # noqa: E731
     summary = (f"{inp.contract_id} {'做多' if inp.side == 'LONG' else '做空'} {inp.quantity} {common.unit(settings, inst)}，入场 {px(inp.entry_ticks)}，"
                f"止损 {px(inp.stop_ticks)}，目标 {px(inp.target_ticks)}。结论 {conclusion}：策略一致性 {alignment}"
                + ("（该品种没有正式策略，不评价）" if no_strategy else "") + "，"
-               f"账户风险 {dec.status}" + (f"（{dec.reason_code}）" if dec.reason_code else "")
+               f"账户风险 {risk_status}" + (f"（{risk_reason}）" if risk_reason else "")
                + ("；纪律标记 " + "、".join(flags) if flags else "") + "。预检只给结论，不下单。")
     check = {
         "plan_id": plan_id, "account_id": account_id, "scope": str(scope), "setup_id": setup_id,
-        "conclusion": conclusion, "strategy_alignment": alignment, "risk_status": dec.status,
-        "risk_reason": dec.reason_code, "discipline_flags": flags, "observable_conditions": conditions[:10],
+        "conclusion": conclusion, "strategy_alignment": alignment, "risk_status": risk_status,
+        "risk_reason": risk_reason, "discipline_flags": flags, "observable_conditions": conditions[:10],
         "data_as_of_utc": sessions.iso(now_utc), "summary": summary[:800],
     }
     errs = llm.schema_errors(settings.project_root, "PretradeCheck", check)
