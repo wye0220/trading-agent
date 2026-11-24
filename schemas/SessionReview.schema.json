@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trading-agent/SessionReview.schema.json",
+  "title": "SessionReview",
+  "description": "一个已封存 session 的日复盘。区分当时知道的事实、证据不足的判断、事后信息和改动假设。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "trading_day": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    },
+    "plan_coverage": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "facts_known_then": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 30
+    },
+    "insufficient_evidence": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 30
+    },
+    "hindsight": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 30
+    },
+    "attribution": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "category": {
+            "enum": [
+              "DATA_ENGINE_ERROR",
+              "RULE_EXECUTION_DEVIATION",
+              "LOSS_BY_RULE",
+              "PROFIT_BY_RULE",
+              "OUT_OF_RULE_OBSERVATION"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          }
+        },
+        "required": [
+          "event_id",
+          "category"
+        ]
+      }
+    },
+    "observations": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "OBSERVATION",
+              "NO_OBSERVATION"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "mechanism": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 600
+          },
+          "evidence_event_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "kind",
+          "scope",
+          "mechanism",
+          "evidence_event_ids"
+        ]
+      }
+    },
+    "trader_note_responses": {
+      "type": "array",
+      "maxItems": 30,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "note_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "response": {
+            "enum": [
+              "ACCEPT",
+              "REBUT",
+              "PENDING"
+            ]
+          },
+          "evidence_event_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "note_id",
+          "response"
+        ]
+      }
+    },
+    "incident_drafts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "maxItems": 50
+    }
+  },
+  "required": [
+    "session_id",
+    "scope",
+    "trading_day",
+    "facts_known_then",
+    "insufficient_evidence",
+    "hindsight",
+    "attribution",
+    "observations"
+  ]
+}

@@ -1,0 +1,11 @@
+name: 同根触及止损和目标：止损优先
+description: 一根 K 最低 4995、最高 5009，先后不明，按止损平仓并标 AMBIGUOUS_BAR。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "09:35", len: 300, b: [5000, 5009, 4995, 5001]}}
+expect:
+  events:
+    - {kind: EXIT, reason: STOP, price: 4996, flags: [AMBIGUOUS_BAR]}
+  position: null

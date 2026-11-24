@@ -1,0 +1,14 @@
+name: 1 分钟线定出先后：先到目标
+description: 目标在 10:01 的 1 分钟线触及，止损价在 10:03 才被触及。按目标平仓，没有歧义标记。同样的行情合成一根 5 分钟线则是 AMBIGUOUS_BAR（见 stop_and_target_same_bar）。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "10:00", b: [5003, 5005, 5002, 5004.5]}}
+  - {bar: {t: "10:01", b: [5004.5, 5008.25, 5004, 5007]}}
+  - {bar: {t: "10:02", b: [5007, 5007.5, 4999, 4999.5]}}
+  - {bar: {t: "10:03", b: [4999.5, 5000, 4995, 4995.5]}}
+expect:
+  events:
+    - {kind: EXIT, reason: TARGET, price: 5008, flags: []}
+  position: null

@@ -138,6 +138,18 @@ instrument_root,contract_id,timeframe,bar_start_utc,open,high,low,close,volume,s
 
 没设时全部导入，导入摘要和报告标 `HOLDOUT_BOUNDARY_NOT_SET`。阶段 5 分配盲测胶囊之前必须定下日期清单。
 
+### 实时行情放行（2026-11-23 用户决定）
+
+`config/live_data.yaml` 登记的来源（现在只有 `webull`）、从登记首日（ES、NQ 都是 2026-11-24）起的交易日，即使晚于截止日也进运行库。这些 K 线只供常驻纸面运行、影子和发布后监控使用：
+
+- 切分登记把放行日排除在开发段、向前验证段、胶囊和余量之外：作者看得到它们，不能当封存数据。
+- 聚合（`evolve`）照旧按截止日排除策略轨的这些 session（`AFTER_DEV_CUTOFF`）；评测只用封存数据。
+- 同一天其他来源的数据（如 Databento 历史文件）照旧封存，也不会进以后的胶囊。
+- 首日必须晚于任何已登记封存的交易日；冲突时这个品种不放行，导入摘要里写明冲突。现在 ES 已登记封存到 2026-11-23，NQ 没有登记。
+- 截止日清理（重新导入、`--rebuild`）不会移出放行的实时行情。
+
+导入摘要里的 `live_after_cutoff` 是这次放行的条数。
+
 ## 派生数据与因果可见性
 
 ### 5 分钟线
@@ -229,7 +241,7 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | 运行库 | `<data_root>/runtime/trading_agent.sqlite` | 全部业务表 |
 | 发布库 | `releases/release-state.sqlite` | `active_pointers`（按四维 scope）和 `release_events`。阶段 1 只建表，不写 |
 
-两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
+两个库都启用 WAL 和 `busy_timeout`。结构由编号 migration 管理（`src/trading_agent/migrations/`），已应用的编号记在 `schema_migrations`。运行库目前有 `0001_initial`（阶段 1）、`0002_engine`（阶段 3）和 `0003_manual`（阶段 4）。带状态的表有 `version` 列，用 `db.versioned_update` 做乐观锁更新；状态和对应事件在同一事务提交。
 
 纸面、人工、影子和回放的记录用 `risk_domain`、`run_mode` 和 `run_id` 区分。
 
@@ -248,11 +260,22 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | `scan_events` | 每轮扫描（含 `strategy_family`、`strategy_state_json`） | 1（数据校验），4（策略） |
 | `alerts` | 告警 | 1 起 |
 | `freeze_events` | 冻结与解除 | 1（数据原因），9（其余） |
-| `paper_orders`、`paper_fills` | 纸面订单与成交 | 3、4 |
-| `trader_plans` | 人工交易计划 | 4 |
-| `manual_trades`、`manual_order_events` | 人工成交与订单生命周期 | 4 |
+| `paper_orders`、`paper_fills` | 纸面订单与成交。阶段 3 给订单加了激活时刻、过期时刻、信号 K 时刻、触发价、限价、止损、目标描述、手数、标记、结束原因 | 3 |
+| `engine_runs` | 引擎的每个运行：scope、模式、风险域、三个水位、当前策略状态 | 3 |
+| `paper_positions` | 纸面仓位：成交价、止损、目标、截止强平时刻、标记、绑定的版本元组 | 3 |
+| `paper_trades` | 已完结的纸面交易：盈亏、费用、两种 R、退出原因、标记 | 3 |
+| `explanation_requests` | 给模型的解释请求队列，带快照 ID 和尝试次数 | 3 起 |
+| `account_risk_days` | 真实账户按交易日的已实现亏损、预留、止损次数、是否停手 | 3（结构），4（使用） |
+| `account_risk_events` | 真实账户已完结交易的登记，按券商 ID 去重 | 3（结构），4（使用） |
+| `risk_reservations` | 人工计划的风险预留 | 3（结构），4（使用） |
+| `trader_plans` | 人工交易计划。阶段 4 加了 scope、`setup_id`、激活时刻、已成交手数、预检时的版本元组 | 4 |
+| `plan_events` | 计划状态变化的审计：前后状态、时刻、操作者 | 4 |
+| `manual_trades` | 人工成交。一行是一笔成交的开仓部分或平仓部分；阶段 4 加了去重键、开平、交易日、是否隔离、去重规则、关联建议与说明、平均入场价、已实现盈亏、退出类型、`plan_adherence`、`strategy_alignment` | 4 |
+| `manual_order_events` | 订单生命周期事件。阶段 4 加了合约、方向、订单类型、价格、数量 | 4 |
 | `broker_snapshots` | 券商只读快照 | 4 |
-| `discipline_alerts` | 纪律提醒 | 4 |
+| `discipline_alerts` | `watch` 的纪律提醒。阶段 4 加了交易日、持仓键、级别、文字、解除时刻 | 4 |
+| `discipline_events` | 纪律事件：类型、动作时点、关联的计划和成交、`plan_adherence`、`strategy_alignment`、证据 | 4 |
+| `watch_state` | `watch` 的状态：心跳、上一快照的持仓和止损、首次看到无止损的时刻 | 4 |
 | `trader_notes` | 交易员纠正 | 4 |
 | `sessions` | 交易 session 与 KPI | 4、6A |
 | `candidates`、`candidate_ledger` | 候选与台账 | 6A、6B |
@@ -276,3 +299,51 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 8. **物化的参考价位**以 RTH 开盘为计算时点。
 9. **可分配窗口的计数口径**：每个连续覆盖区段内，从预热充足的那天起数完整有效且非降级的 RTH 日，胶囊数为它除以 20 取整，确认段数为它除以 40 取整。开发期和验证窗另外扣除。
 10. **scope 的周期**首版只接受 `5m`。
+
+
+## Webull MCP 连接器（2026-11-23 起的每日来源）
+
+Webull 的 OpenAPI 密钥没有期货行情，但 Claude 里的 Webull MCP 连接器有：`get_futures_bars` 能取 ES、NQ 的实时 5 分钟线（实测延迟 0 分钟）。连接器只能在 Claude 会话里调用，`collect` 程序自己调不了，所以分两步：
+
+1. 会话里调用连接器，返回的 JSON 原样落到一个文件。返回很大（一天两个品种约 7 万字符），Claude Code 会自动把它存成文件，价格不经过对话内容。
+2. `collect --from-mcp <文件>` 读这个文件。之后与其他来源完全一样：只存已收线的 K 线，只追加，内容变了记为修订，然后入库。
+
+```bash
+uv run python -m trading_agent collect --mcp-request          # 打印该请求的合约代码、起始时刻、根数
+uv run python -m trading_agent collect --from-mcp <JSON 文件>   # 文件里有几个已登记的品种就存几个
+```
+
+口径（2026-11-23 实测核对）：
+
+- 合约代码是短格式（`ESZ6`、`NQZ6`），入库时规范化为 `ESZ2026`、`NQZ2026`。只接受当日的实际合约，别的合约整份拒收。
+- `time` 是 K 线的起始时刻，UTC。返回按时间倒序，保存时按升序。
+- 取数时刻取文件的修改时间（可用 `--fetched-at` 指定）。它是真实到达时刻，`available_at_estimated` 为 `false`。起始时刻加 5 分钟晚于取数时刻的那根还没收线，不保存。
+- 文件位置：`<data_root>/webull/<根代码>/<合约>/<交易日>.csv`，来源名 `webull`。
+- 包含夜盘。一个完整交易日是 276 根（前一日 18:00 ET 至当日 17:00 ET）。
+
+**与开发可见截止日的关系**：这些数据都晚于 2024-12-31。2026-11-23 及之前采集的价格不进运行库，只记覆盖和内容摘要（已登记为封存）；2026-11-24 起按实时行情放行进运行库（见上文"实时行情放行"）。2026-09-05 至 2026-11-19 之间没有数据（Databento 文件到 09-04 为止）。
+
+### 每日定时（流水任务）
+
+2026-11-23 经用户要求安装了系统定时任务 `com.wenye.trading-agent-collect`（`~/Library/LaunchAgents/`，源文件在 `ops/launchd/`）：周一到周五 17:12（纽约时间，CME 收盘后）运行 `ops/launchd/run-collect-mcp.sh`。
+
+1. 不是交易日就安静退出。
+2. 用 `claude -p` 无人值守地调起 Claude Code。允许它用的工具只有三个：工具检索、取期货 K 线的连接器、`collect --from-mcp` 命令。
+3. 脚本自己用 `collect --check-day` 核对当天 ES、NQ 的文件是否覆盖了全部 RTH 5 分钟线，不依赖 Claude 的说法。
+4. 核对不过就发 Telegram（`ops/notify-telegram.sh`），说明是 Claude Code 没跑成功（多半是登录或连接器授权失效）、连接器不可用，还是数据不完整。Telegram 发不出去时退回 macOS 本机通知。
+
+日志在 `<data_root>/logs/collect-mcp/<交易日>.log`。Telegram 凭证复用 `~/trading-desk/.env` 里的机器人（用户同意），脚本只解析 `TELEGRAM_BOT_TOKEN` 和 `TELEGRAM_CHAT_ID` 两个键；也可以另放在 `~/trading-agent-data/secrets/telegram.env`。
+
+```bash
+./ops/launchd/run-collect-mcp.sh                # 手工跑一次（核对今天）
+launchctl print gui/$(id -u)/com.wenye.trading-agent-collect | head
+launchctl bootout gui/$(id -u)/com.wenye.trading-agent-collect      # 停用
+```
+
+**限制**：
+
+- 提醒只在任务跑起来之后才会发。电脑关机时任务不会跑，也就不会提醒；睡眠中错过的那一次，launchd 会在唤醒后补跑。
+- 漏掉的日子靠回看补：每次请求回看 2 个交易日，单次上限 1200 根（约 4 个交易日）。
+- 采集时运行库被别的进程占用，入库那一步会失败，但 CSV 已经存好，下一次 `ingest` 会补上。
+- 更早的历史补不回来：连接器只按当前合约代码取数，换月之前的合约要单独请求。
+- NQ 只是存数据。NQ 的 scope 没有启用，也没有基线。

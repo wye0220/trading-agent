@@ -1,0 +1,48 @@
+# Memory 登记表（阶段 7）。条目的每个字符串字段只能取这里登记的值。
+# 风险上限和实时状态（仓位、盈亏、已占用风险）的名字写不进来：加载时会失败。
+version: memory-registry-v1
+max_items_per_context: 12
+discipline_min_sample_n: 20
+
+# user_preference 的键白名单
+preference_keys:
+  report_max_lines: {min: 1, max: 200, unit: null, label: 报告最多行数}
+  watch_poll_interval_seconds: {min: 10, max: 3600, unit: null, label: watch 轮询间隔}
+
+# 各 kind 可以用的指标
+metrics:
+  market_fact:
+    roll_start_date: {unit: yyyymmdd, label: 换月起始交易日}
+    expiration_date: {unit: yyyymmdd, label: 到期日}
+  discipline_pattern:
+    occurrence_day_rate: {unit: ratio, label: 出现天数占比}
+    failure_rate: {unit: ratio, label: 失败率}
+    plan_coverage: {unit: ratio, label: 计划覆盖率}
+    mean_r: {unit: r, label: 平均 R}
+    occurrence_days: {unit: count, label: 出现天数}
+
+# condition 的键。写法：键=值，多个用 . 连接，如 event=retry_without_new_setup.attempt>=2
+condition_keys:
+  event:
+    label: 事件
+    values: [unplanned, countertrend_before_confirmation, retry_without_new_setup, early_exit, stop_widened,
+             stop_delayed, missing_evidence, watch_alert_unresolved, watch_alert_repeated]
+  attempt: {label: 第几次尝试, int: [1, 20]}
+  cycle: {label: 周期, values: [bull_spike, bear_spike, bull_microchannel, bear_microchannel, unknown]}
+  side: {label: 方向, values: [long, short]}
+  contract: {label: 合约, contract: true}
+
+sources:
+  user_preference: [trader_note]
+  market_fact: [exchange_calendar, instrument_config]
+  discipline_pattern: [session_review, evolve_cluster, manual_ledger]
+
+# 每类任务注入哪些条目。偏好列出具体的键；其余 kind 写 true。
+relevance:
+  ScanExplanation: {user_preference: [report_max_lines], market_fact: true}
+  PretradeCheck: {user_preference: [report_max_lines], market_fact: true, discipline_pattern: true}
+  SessionReview: {user_preference: [report_max_lines], market_fact: true, discipline_pattern: true}
+  Candidate: {discipline_pattern: true}
+  MemoryCandidate: {market_fact: true, discipline_pattern: true}
+  ReleaseReview: {}
+  watch: {user_preference: [watch_poll_interval_seconds]}

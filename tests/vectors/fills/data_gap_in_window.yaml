@@ -1,0 +1,13 @@
+name: 有效期内缺数据
+description: 订单的有效期内没有任何行情。不造成交，到期为 EXPIRED 并带 DATA_GAP_IN_WINDOW。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {expire: "09:40:00"}
+expect:
+  events:
+    - {kind: EXPIRED, order: A, reason: TTL, flags: [DATA_GAP_IN_WINDOW]}
+  orders: {A: EXPIRED}
+  position: null

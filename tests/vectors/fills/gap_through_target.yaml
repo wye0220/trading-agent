@@ -1,0 +1,10 @@
+name: 跳空越过目标：保守按目标价成交
+description: 开盘 5010 高于目标 5008，不给价格改善，按 5008 平仓。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "09:41", b: [5010, 5011, 5009, 5010.5]}}
+expect:
+  events:
+    - {kind: EXIT, reason: TARGET, price: 5008, flags: []}

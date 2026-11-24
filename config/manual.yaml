@@ -1,0 +1,16 @@
+# 人工轨（plan、watch、成交导入、纪律）的设置。
+default_account_id: alpaca-paper   # 默认账户标识。2026-11-22：Alpaca 模拟盘（paper trading），权益约 $1,000,000。留空时 plan / watch 必须用 --account 指定
+plan_ttl_minutes: 30           # 计划默认多久之后失效
+cooldown_minutes: 15           # 止损出场后的冷却时间：其间同向再开仓触发提醒
+quiet_window_minutes: 15       # 同一持仓同一规则在这段时间内不重复提醒
+plan_coverage_threshold: 0.8   # 计划覆盖率低于它时，纪律结论标注样本不足
+stop_tolerance_ticks: 2        # 平仓价比计划止损差出多少 tick 以内不算拖止损
+daily_loss_warn_fraction: 0.8  # 当日亏损达到日损上限的这个比例时提醒
+strategy_state_max_age_bars: 2 # 策略状态落后超过几根 K 就视为不可用
+rules:                         # watch 的规则开关
+  NAKED_POSITION: true
+  STOP_MOVED_AWAY: true
+  REENTRY_IN_COOLDOWN: true
+  UNPLANNED_ENTRY: true
+  COUNTERTREND_ADD: true
+  DAILY_LOSS_NEAR_LIMIT: true

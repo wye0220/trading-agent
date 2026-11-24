@@ -1,0 +1,13 @@
+name: 只有 5 分钟线：跨着激活时刻的成交带 AMBIGUOUS_ENTRY
+description: 订单 09:35:05 激活，可用的只有 09:35–09:40 这根 5 分钟线。它触及触发价，订单成交并带标记。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:35", len: 300, b: [4999, 5002, 4998.5, 5001.5]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000, flags: [AMBIGUOUS_ENTRY]}
+  position: {entry: 5000, flags: [AMBIGUOUS_ENTRY]}

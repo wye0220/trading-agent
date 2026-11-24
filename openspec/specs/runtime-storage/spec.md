@@ -70,3 +70,70 @@ active 指针和 `release_events` SHALL 存放在与运行库分开的发布数�
 #### Scenario: 运行库位置
 - **WHEN** 初始化完成
 - **THEN** 运行库文件位于数据根目录下，项目目录内没有运行库文件
+
+### Requirement: 引擎表
+运行库 SHALL 另含引擎所需的表：引擎运行记录、纸面仓位、已完结的纸面交易、解释请求队列、账户风险日记录和风险预留。纸面订单 SHALL 记录激活时刻、过期时刻、信号 K 时刻、触发价、限价、止损、目标描述和标记。这些结构 MUST 由一个新的编号 migration 建立，已有数据不受影响。
+
+#### Scenario: 从阶段 1 的库升级
+- **WHEN** 对一个只应用过初始 migration、且已有行情数据的运行库打开连接
+- **THEN** 新的 migration 被应用，新表存在，原有的 K 线数量不变
+
+#### Scenario: 结构版本
+- **WHEN** 升级完成后查询结构版本
+- **THEN** 已应用的编号依次为初始 migration 和引擎 migration
+
+### Requirement: 人工轨的表
+运行库 SHALL 另含计划审计、纪律事件和 watch 状态的表，并给计划、人工成交、订单事件和纪律提醒补充所需的列。这些结构 MUST 由新的编号 migration 建立，已有数据不受影响。
+
+#### Scenario: 从阶段 3 的库升级
+- **WHEN** 对一个已应用前两个 migration 的运行库打开连接
+- **THEN** 第三个 migration 被应用，新表存在，原有数据不变
+
+### Requirement: 研究用表
+运行库 SHALL 通过编号 migration `0004_research.sql` 新增 `baselines`、`research_runs`、`split_registries`、`data_segments` 四张表，并给 `withheld_coverage` 增加 `content_sha256` 列。既有表的其他结构不变。
+
+#### Scenario: 从阶段 4 的库升级
+- **WHEN** 用新代码打开阶段 4 建的运行库
+- **THEN** migration 0004 被应用，既有数据保留，全部既有测试通过
+
+### Requirement: 复盘用表
+运行库 SHALL 通过编号 migration `0005_review.sql` 新增 `session_reviews`、`observations`、`incident_drafts`、`memory_candidates` 四张表。既有表结构不变。
+
+#### Scenario: 升级
+- **WHEN** 用新代码打开阶段 5 的运行库
+- **THEN** migration 0005 被应用，既有数据保留
+
+### Requirement: 演化相关的表
+运行库 SHALL 通过编号 migration `0006_evolve.sql` 新增 `evolve_runs`、`observation_clusters`、`candidate_queue` 和 `pre_eval_shadow_days`。既有表 MUST NOT 被改动。
+
+#### Scenario: 升级已有的库
+- **WHEN** 在已有数据的运行库上执行 migration
+- **THEN** 新表出现，既有数据不变
+
+### Requirement: Memory 版本的 migration
+运行库 SHALL 通过编号 migration `0007_memory` 增加 `memory_versions`、`memory_head` 和 `memory_events`，不改动既有表的列。
+
+#### Scenario: 从旧库升级
+- **WHEN** 对只应用到 `0006_evolve` 的运行库执行 migrate
+- **THEN** 只应用 `0007_memory`，既有数据不变
+
+### Requirement: 评测的 migration
+运行库 SHALL 通过 `0008_evaluation` 增加协议、登记、窗口账本和事故库的表，不改既有表的列。
+
+#### Scenario: 从旧库升级
+- **WHEN** 对应用到 `0007_memory` 的库执行 migrate
+- **THEN** 只应用 `0008_evaluation`
+
+### Requirement: 发布相关表
+运行库 migration `0009_release` SHALL 新增发布版本、版本事件、影子登记和监控记录表；事件表和影子计划 SHALL 不可修改。发布库 migration `0002_release` SHALL 新增已批准清单表，清单和审计事件 SHALL 只追加。
+
+#### Scenario: 改写审计事件
+- **WHEN** 试图更新或删除 `release_events`
+- **THEN** 数据库拒绝
+
+### Requirement: 运维相关表
+运行库 migration `0010_ops` SHALL 新增运维状态（心跳、水位）、运行锁、告警分发记录、控制命令审计、确认令牌和 context 约束表；控制命令审计 SHALL 只追加。
+
+#### Scenario: 改写审计
+- **WHEN** 试图更新或删除控制命令审计
+- **THEN** 数据库拒绝

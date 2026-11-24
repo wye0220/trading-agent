@@ -8,7 +8,15 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | --- | --- | --- |
 | 1 数据合同与项目骨架 | 完成 | `docs/data-contract.md` |
 | 2 策略插件接口与 PA v1.0 | 完成（策略还没有接进 `scan`，也没有在真实数据上运行过） | `docs/strategy-spec.md` |
-| 3 引擎核心及以后 | 未开始 | — |
+| 3 引擎核心 | 完成（成交模型、风控、逐步运行器；还没有命令行入口，也没有在真实数据上运行过） | `docs/engine.md` |
+| 4 scan、plan、watch 与人工成交导入 | 完成（没有实时行情和真实券商接口，盘中功能如实报告没有数据） | `docs/scan-plan-watch.md` |
+| 5 回放与基线 | 完成（基线在 2019-09-05 至 2024-12-31 的真实 ES 数据上冻结；之后的数据封存） | `docs/replay-baseline.md` |
+| 6A 日复盘 | 完成（规则生成，不调用模型；基线主运行 1340 天和 Alpaca 人工轨已复盘） | `docs/daily-review.md` |
+| 6B 聚合演化 | 完成（确定性聚合、候选台账、双轨队列；模型归纳一步只留接口） | `docs/evolve.md` |
+| 7 Memory 存储 | 完成（结构化条目、版本快照与回滚；市场事实和执行模式等阶段 8 评测后才能生效） | `docs/memory.md` |
+| 8 独立评测 | 完成（预登记、盲筛、正式确认、事故回归库；隔离验收未通过，真实窗口未解封） | `docs/evaluation-protocol.md` |
+| 9 影子、发布、回滚与监控 | 完成（在临时库上演练了完整的纸面晋级；真实 scope 还没有 active 版本，批准要你在终端里确认） | `docs/release-policy.md` |
+| 10 调度、告警与控制通道 | 完成（样例未安装；盘中采集和 Telegram 控制通道等你授权和配置） | `docs/ops-runbook.md` |
 
 ## 环境
 
@@ -38,12 +46,53 @@ uv run pytest                 # 单元测试，全部用合成数据
 # 导入数据根目录里新增或变化的内容，并生成 reports/data_availability.md
 uv run python -m trading_agent ingest
 uv run python -m trading_agent ingest --json
-uv run python -m trading_agent ingest --through 2025-12-31    # 晚于该交易日的 K 线不进运行库
+uv run python -m trading_agent ingest --through 2024-12-31    # 晚于该交易日的 K 线不进运行库（缺省取 config/paths.yaml）；库里已有的会被移出
 uv run python -m trading_agent ingest --rebuild               # 改了换月规则等配置后：从原始 K 线重算派生数据和交易日状态
 
-# 数据校验 + 封存快照。阶段 1 只会给出 WAIT 或 DATA_ERROR，不产生信号
-uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z
-uv run python -m trading_agent scan --scope pa_brooks:ES:RTH:5m --json      # 缺省 as-of 为当前时刻
+# 数据校验后运行策略和纸面账本，输出中文短报
+uv run python -m trading_agent scan                                         # 盘中
+uv run python -m trading_agent scan --as-of 2026-09-03T15:00:00Z            # 历史。真实数据未设截止日时只做数据校验
+uv run python -m trading_agent scan --scope pa_brooks:ES:RTH:5m --json
+
+# 人工交易计划：登记并预检（只给结论，不下单）；激活才预留预算
+uv run python -m trading_agent plan ES L 5000 4995 5010 1 PA Spike H1 --account U123
+uv run python -m trading_agent plan --activate plan_xxxxxxxxxxxx
+uv run python -m trading_agent plan --list
+
+# 盘中只读纪律提醒：读 ~/trading-agent-data/broker/<账户>/snapshot.json
+uv run python -m trading_agent watch --once --account U123
+uv run python -m trading_agent watch --account U123 --interval 300
+
+# 股票类（SPY、QQQ）走同样的命令，数量是股数；默认账户是 Alpaca 模拟盘
+uv run python -m trading_agent plan SPY L 700.50 699.00 705 100 回调买入
+uv run python -m trading_agent ingest --alpaca          # 只读导入 Alpaca 的订单记录和成交
+
+# 导入人工成交和订单事件
+uv run python -m trading_agent ingest --trades trades.csv --order-events orders.csv
+
+# 回放一段日期（真实数据要显式允许，且不得晚于开发可见截止日）
+uv run python -m trading_agent replay --from 2024-01-02 --to 2024-01-31 --allow-real-data
+
+# 冻结基线：登记切分、回放两次校验一致、出基线报告和功效测算（全量约一小时）
+uv run python -m trading_agent baseline --allow-real-data --jobs 4
+uv run python -m trading_agent baseline --allow-real-data --skip-power      # 只出基线报告
+
+# 日复盘：先封存再复盘，输出到 reports/sessions/
+uv run python -m trading_agent review --day 2024-06-12 --seal
+uv run python -m trading_agent review --day 2026-11-10 --manual-only --seal    # 只复盘人工轨
+uv run python -m trading_agent evolve --last 0 --account alpaca-paper           # 跨日聚合，生成候选
+uv run python -m trading_agent evolve --ledger                                 # 队列与余下的 α 额度
+uv run python -m trading_agent memory                                          # 长期记忆：当前版本、生效条目、待确认的候选
+uv run python -m trading_agent evaluate                                        # 评测状态：登记、窗口占用、余下的 α
+uv run python -m trading_agent evaluate --isolation-check                      # 隔离验收
+uv run python -m trading_agent release --status                                # active 版本、入场权限、冻结、待批准清单
+uv run python -m trading_agent release --initial-baseline                      # 首次纸面基线的清单（批准要在终端里手动确认）
+uv run python -m trading_agent freeze --reason "..."                           # 冻结新入场；--unfreeze 解除
+uv run python -m trading_agent monitor                                         # 发布后监控（收盘后）
+uv run python -m trading_agent ops --health                                    # 心跳、水位、锁、死信、待发告警、恢复命令
+uv run python -m trading_agent ops --tick                                      # 盘中节拍（有新收线才扫描）
+uv run python -m trading_agent ops --daily                                     # 盘后：封存复盘、账本检查、监控
+uv run python -m trading_agent control --exec "freeze ALL 盘前演练"             # 控制通道（本机，须先绑定用户）
 
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect
@@ -51,9 +100,13 @@ uv run python -m trading_agent collect
 
 `--scope` 的格式是 `strategy_family:instrument_root:session_type:timeframe`，缺省 `pa_brooks:ES:RTH:5m`。
 
-其余子命令（`plan`、`watch`、`replay`、`review`、`evolve`、`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
+影子、发布、回滚、冻结和监控的完整用法见 `docs/release-policy.md`。
 
-## 实时采集（暂不可用）
+## 每日采集（Webull MCP 连接器）
+
+2026-11-23 起，ES 和 NQ 的 5 分钟线通过 Claude 里的 Webull MCP 连接器每日保存：会话里取数，`collect --from-mcp <JSON 文件>` 落盘入库。细节和限制见 `docs/data-contract.md` 的"Webull MCP 连接器"。这些数据晚于开发可见截止日，只存文件，价格不进运行库。
+
+## 无人值守的实时采集（暂不可用）
 
 **现状（2026-11-22）：Webull 账号没有美国期货行情，`collect` 取不到 ES 的 K 线，实时来源暂缓接入。** 阶段 2–5 只用历史数据，不受影响。等做到盘中 `scan`、`watch` 时再定来源。
 
@@ -102,4 +155,8 @@ uv run pytest -m webull_live -s  # 需要 Webull 凭证并联网
 
 合成样本在 `tests/fixtures/`，由 `tests/fixtures/make_fixtures.py` 生成，全部带 `FIXTURE` 标记。合成结果只用于验收，不能作为策略证据。
 
-策略的逐 bar 向量在 `tests/vectors/strategy/pa_brooks/`。每个向量会正向跑一遍，再按价格翻转跑一遍镜像。
+策略的逐 bar 向量在 `tests/vectors/strategy/pa_brooks/`，成交向量在 `tests/vectors/fills/`。每个向量会正向跑一遍，再按价格翻转跑一遍镜像。
+
+## 需要你填写的配置
+
+`config/risk.yaml` 里的金额类字段默认留空：每手费用、研究风险单位、账户的单笔预算、日损上限、最大手数。没填之前纸面评测照常运行（费用按 0 计并打标记），人工计划的预算核验一律不放行。填好账户限额后把 `account.approved` 改为 `true`。

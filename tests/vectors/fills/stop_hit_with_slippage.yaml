@@ -1,0 +1,12 @@
+name: 触及止损，加不利滑点
+description: 止损 4996，滑点 1 tick，在 4995.75 平仓。
+date: 2025-11-25
+slippage: {entry: 0, stop: 1}
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "09:41", b: [4998, 4999, 4995.5, 4996.5]}}
+expect:
+  events:
+    - {kind: EXIT, reason: STOP, price: 4995.75, flags: []}
+  position: null

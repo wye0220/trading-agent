@@ -1,0 +1,69 @@
+# 聚合演化（阶段 6B）的设置。这里的数都是预登记的：排序公式、权重和模板改动应发生在查看任何确认结果之前。
+window_sessions: 60            # 默认读最近多少个已封存并已复盘的 session（--last 可覆盖，0 = 全部）
+min_days: 3                    # 观察至少出现在这么多个不同交易日，才能升为 PROPOSED
+max_candidates_per_family: 3   # 每个策略家族每次运行最多新生成几个候选
+queue_ttl_days: 120            # 候选在队列里超过这么多天未被取用，转 SUPERSEDED
+examples_per_side: 3           # 送去归纳的正例、反例各最多几条
+
+# 队列排序分 = 效应项 × 证据天数权重 × 机制可信度
+#   效应项：ALPHA_EXPANSION 取 max(0, 平均配对日差)；PRUNING_DEFENSIVE 取 max(0, 平均配对日差 + 非劣效界)
+#   证据天数权重：min(1, 证据天数 / days_full_weight)
+#   机制可信度：(1 − 反例占比；算不出反例时取 unknown_counter_factor) ×（证据集中在单一入场时段时乘 single_bucket_factor）
+queue_score:
+  days_full_weight: 20
+  unknown_counter_factor: 0.5
+  single_bucket_share: 0.8     # 同一时段的证据占比达到它，视为依赖单一时段
+  single_bucket_factor: 0.5
+
+shadow:
+  top_n: 3                     # 每个 scope 排名前几的候选做前向预演
+
+# 上线后的回滚条件（必须是阶段 9 监控能算出来的量）
+rollback_trigger:
+  PRUNING_DEFENSIVE: 发布后最近 20 个有效交易日的净 R／日较基线同期低 0.05 以上，或最大回撤较基线同期多 1.0 R 以上
+  ALPHA_EXPANSION: 发布后最近 20 个有效交易日的净 R／日较基线同期低 0.05 以上，或最大回撤较基线同期多 1.0 R 以上
+  CHEAP_NON_STRATEGY: 发布后最近 20 个交易日该类纪律事件的日均次数不低于发布前 20 个交易日
+
+# 规则开关和模板文件的白名单（非策略类候选只能改这些键）。目前为空。
+non_strategy_whitelist: []
+
+# 机制 →（原因）→ 配置差异键。聚类按它分键；没有登记的机制差异键为空，只能停在 OBSERVATION。
+# 差异键必须在该策略登记的可改键白名单内。
+mechanism_map:
+  pa_brooks:
+    - {mechanism: FILTERED_SETUP, reason: TAIL_WINDOW_UNCONFIGURED, diff_key: params.discipline.tail_window_minutes}
+    - {mechanism: FORCED_FLAT, diff_key: params.discipline.tail_window_minutes}
+    - {mechanism: STOPPED_THEN_TARGET, diff_key: params.entry.stop_offset_ticks}
+
+# 预登记的提案模板：聚类达到 min_days 时据此生成候选。from 由现行配置填入。
+# 这些是待检验的假设，不是结论。
+templates:
+  pa_brooks:
+    - id: tail_window_15
+      mechanism: FILTERED_SETUP
+      reason: TAIL_WINDOW_UNCONFIGURED
+      track: ALPHA_EXPANSION
+      key: params.discipline.tail_window_minutes
+      to: 15
+      observed_problem: 收盘前 30 分钟内出现的合格信号被尾盘规则拦下，没有挂单
+      hypothesis: 把不追单的尾盘窗口从 30 分钟缩短到 15 分钟，多出来的交易在扣除费用后有正的净 R
+      expected_tradeoff: 成交数增加；新增的交易离截止强平更近，被强平出场的比例会上升
+      invariants: [截止强平时刻不变, 每日两次止损后停手的规则不变, 其余过滤器不变]
+    - id: tail_window_60
+      mechanism: FORCED_FLAT
+      track: PRUNING_DEFENSIVE
+      key: params.discipline.tail_window_minutes
+      to: 60
+      observed_problem: 一部分持仓既没到止损也没到目标，拖到截止强平才出场
+      hypothesis: 把不追单的尾盘窗口从 30 分钟加到 60 分钟，去掉的交易不拉低净 R／日，并减小回撤
+      expected_tradeoff: 成交数减少；可能漏掉尾盘的趋势延续
+      invariants: [截止强平时刻不变, 每日两次止损后停手的规则不变, 其余过滤器不变]
+    - id: stop_offset_2
+      mechanism: STOPPED_THEN_TARGET
+      track: ALPHA_EXPANSION
+      key: params.entry.stop_offset_ticks
+      to: 2
+      observed_problem: 一部分交易止损出场后，当日价格又到过原定目标
+      hypothesis: 把止损从回调极值外 1 tick 放到 2 tick，少被扫掉的交易带来的净 R 超过每笔多承担的风险
+      expected_tradeoff: 每笔初始风险变大；真正失败的交易亏得更多
+      invariants: [入场触发价和限价不变, 目标规则不变, 每日两次止损后停手的规则不变]

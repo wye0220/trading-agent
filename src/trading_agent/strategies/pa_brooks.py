@@ -24,6 +24,15 @@ IMPLEMENTED_SETUPS = frozenset({"spike_pullback"})
 KNOWN_SETUPS = ("climax_reversal", "spike_pullback", "major_trend_reversal", "wedge", "failed_breakout",
                 "double_top_bottom", "lower_high_higher_low", "flag", "h2_l2", "h1_l1")
 FILTERS = ("h1l1_block", "counter_spike", "counter_htf", "range_position", "exhaustion")
+# 允许由配置差异改动的键（研究扰动和以后的自动演化只能动这些）。* 匹配一段。
+# 不在其中的：入场订单类型、每日止损次数、形态的启用开关（新形态要走人工代码分支和向量验收）。
+EVOLVABLE_KEYS = (
+    "params.spike.*", "params.quality.*", "params.pullback.max_label", "params.exhaustion.*",
+    "params.entry.trigger_offset_ticks", "params.entry.limit_offset_ticks", "params.entry.stop_offset_ticks",
+    "params.target.adr_fraction", "params.target.fallback_risk_multiple",
+    "params.discipline.tail_window_minutes", "params.microchannel_min_bars", "params.range_position_divisor",
+    "groups.*.max_retrace_pct", "groups.*.max_pullback_bars", "setups.*.exempt",
+)
 DEFAULT_CONFIG = Path(__file__).resolve().parents[3] / "config" / "strategies" / "pa-esnq-5m-v1.0.yaml"
 
 
@@ -186,11 +195,15 @@ def parse_config(raw: Mapping[str, Any]) -> PaConfig:
         groups=groups, instruments=dict(raw["instruments"]), setups=tuple(setups))
 
 
-def load_config(path: Path | str = DEFAULT_CONFIG) -> PaConfig:
+def read_raw_config(path: Path | str = DEFAULT_CONFIG) -> dict:
     """读取 YAML 配置文件。这是本模块唯一的文件读取，只在构造策略时由调用方触发；on_bar 不做 I/O。"""
     import yaml
     with open(path, encoding="utf-8") as f:
-        return parse_config(yaml.safe_load(f))
+        return yaml.safe_load(f)
+
+
+def load_config(path: Path | str = DEFAULT_CONFIG) -> PaConfig:
+    return parse_config(read_raw_config(path))
 
 
 # ---------------------------------------------------------------- 定向坐标与基本判定
@@ -320,6 +333,15 @@ class PaBrooksStrategy:
     @classmethod
     def from_default_config(cls) -> "PaBrooksStrategy":
         return cls(load_config())
+
+    @classmethod
+    def variant(cls, diff: Mapping[str, Any], label: str, path: Path | str = DEFAULT_CONFIG) -> "PaBrooksStrategy":
+        """基线配置加一组白名单内的差异。版本号加上标签，与基线区分。只用于研究对比，不改正式配置。"""
+        from .variants import apply_diff
+        raw = read_raw_config(path)
+        changed = apply_diff(raw, diff, EVOLVABLE_KEYS)
+        changed["version"] = f"{raw['version']}+{label}"
+        return cls(parse_config(changed))
 
     def feature_requirements(self) -> FeatureRequirements:
         return FeatureRequirements(frozenset({"ema20", "atr14", "ema_side_run", "adr10", "htf_1h", "swing_pivots",

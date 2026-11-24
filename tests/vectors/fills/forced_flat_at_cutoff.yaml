@@ -1,0 +1,13 @@
+name: 截止强平
+description: 15:55 ET 仍持有多仓。按 15:55 起第一个可用价格（那一根的开盘）减滑点平仓。
+date: 2025-11-25
+slippage: {entry: 0, stop: 1}
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "15:54", b: [5003, 5004, 5002.5, 5003.5]}}
+  - {bar: {t: "15:55", b: [5003.25, 5004, 5003, 5003.5]}}
+expect:
+  events:
+    - {kind: EXIT, reason: FORCED_FLAT, price: 5003, flags: []}
+  position: null

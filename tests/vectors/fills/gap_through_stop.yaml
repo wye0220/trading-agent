@@ -1,0 +1,12 @@
+name: 跳空穿过止损
+description: 多仓止损 4996，下一根开盘 4990。按开盘价减滑点平仓，标 GAP_THROUGH_STOP。
+date: 2025-11-25
+slippage: {entry: 0, stop: 1}
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "09:41", b: [4990, 4992, 4989, 4991]}}
+expect:
+  events:
+    - {kind: EXIT, reason: STOP, price: 4989.75, flags: [GAP_THROUGH_STOP]}
+  position: null

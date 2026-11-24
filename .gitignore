@@ -18,5 +18,7 @@ webull_*.log
 # 生成的报告
 reports/*
 !reports/.gitkeep
+# 生成的候选文件（台账在运行库里）
+candidates/*
+!candidates/.gitkeep
 data/
-.DS_Store

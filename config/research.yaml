@@ -1,0 +1,64 @@
+# 研究设置：数据切分、基线报告的分组、预登记的扰动和功效模拟的门槛。
+# 这里的数值都是实验预设。改动应发生在查看任何相关确认结果之前。
+
+splits:
+  forward_validation_start: 2024-01-01   # 这一天起到开发可见截止日为向前验证段，之前为开发段
+  capsule_valid_days: 20                 # 一个胶囊的有效交易日数
+  warmup_trading_days: 20                # 数据起点后的预热日：回放照跑，但不计入度量
+  default_usage:                         # 默认取用顺序
+    blind_screen_capsules: 1
+    confirm_capsules: 6                  # 2026-11-22 另立协议：确认窗从 40 日延长到 120 日（见 docs/replay-baseline.md）
+
+report:
+  # 分组：标签 → 策略 decision_metadata 里的路径。报告代码不认识任何策略专有字段。
+  group_by:
+    pa_brooks:
+      形态: setup
+      编号: label
+      方向: side
+      周期: structure.cycle
+      回调根数: structure.spike.pullback_bucket
+      目标规则: target_rule
+  time_buckets_et: ["09:30", "10:30", "12:00", "14:00", "15:00"]   # 入场时段的分界（纽约时间）
+
+power:
+  seed: 20261122
+  block_length_days: 5          # 连续交易日区块长度
+  simulations: 2000             # 外层：模拟多少个 40 日确认窗
+  inner_resamples: 1000         # 内层：每个确认窗里求置信界的重采样次数
+  confirm_days: 120             # 2026-11-22 另立协议，定于查看任何确认数据之前。原默认 40 日内期望成交只有 12 笔
+  alpha_family: 0.05            # 一个假设家族的单侧 α
+  max_formal_tests: 5           # 家族内预登记的正式检验次数 K；每次检验用 α_family / K
+  power_target: 0.80
+  min_trades_per_arm: 20        # 确认窗内基线和候选各至少多少笔成交
+  min_dev_days: 200             # 开发段有效日少于它时，区间估计视为不可靠
+  stress_extra_ticks_per_side: 1
+  track_a:                      # 剪枝防守：非劣效加回撤改善
+    margin_r_per_day: 0.05
+    drawdown_improvement_min_pct: 10
+  track_b:                      # 结构扩展：净提升
+    delta_r_per_day: 0.05                   # 门槛：确认窗内平均配对提升至少这么多
+    planning_true_effect_r_per_day: 0.10    # 规划假设：候选的真实效应。门槛 δ 处的通过率天然只有约一半
+    drawdown_increase_max_r: 1.0
+  true_effect_grid_r_per_day: [0, 0.025, 0.05, 0.10, 0.15, 0.20, 0.30]
+
+# 预登记的代表性扰动：只用于估计配对日差和规划功效，不是候选，也不是盈利证据。
+# diff 的键必须在该策略登记的可改键白名单内。
+perturbations:
+  pa_brooks:
+    - id: A1_block_h1l1
+      track: PRUNING_DEFENSIVE
+      note: 去掉 Spike 回调对 h1l1_block 的豁免，过滤 H1／L1
+      diff: {"setups.spike_pullback.exempt": [counter_htf, range_position, exhaustion]}
+    - id: A2_tail_60
+      track: PRUNING_DEFENSIVE
+      note: 尾盘不追单的窗口从 30 分钟加到 60 分钟
+      diff: {"params.discipline.tail_window_minutes": 60}
+    - id: B1_spike_2atr
+      track: ALPHA_EXPANSION
+      note: Spike 最小幅度从 2.5 倍 ATR 放宽到 2.0 倍
+      diff: {"params.spike.min_move_atr": "2.0"}
+    - id: B2_retrace_60
+      track: ALPHA_EXPANSION
+      note: ES／MES 回调失效阈值从 75% 改为 60%（改核心定义）
+      diff: {"groups.ES_MES.max_retrace_pct": 60}

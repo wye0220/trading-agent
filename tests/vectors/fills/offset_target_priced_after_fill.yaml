@@ -1,0 +1,13 @@
+name: 偏移目标在成交后定价
+description: 买单在 5000.25 成交，目标为成交价加 81 tick = 5020.50。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000.25, limit: 5000.5, stop: 4996.75, target: [OFFSET_FROM_FILL_TICKS, 81], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [4999.5, 5001, 4999.25, 5000.75]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000.25}
+  position: {entry: 5000.25, stop: 4996.75, target: 5020.5}

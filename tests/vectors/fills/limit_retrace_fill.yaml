@@ -1,0 +1,13 @@
+name: LIMIT_RETRACE：回落到限价成交
+description: 买入限价 4998。一根 K 最低 4997.5，按限价 4998 成交，不给价格改善。
+date: 2025-11-25
+
+orders:
+  - {id: L, side: LONG, type: LIMIT_RETRACE, limit: 4998, stop: 4994, target: [ABSOLUTE_PRICE_TICKS, 5004], armed: "09:35:05", expires: "09:45:00"}
+steps:
+  - {bar: {t: "09:36", b: [4999.5, 5000, 4998.5, 4999]}}
+  - {bar: {t: "09:37", b: [4999, 4999.25, 4997.5, 4998.5]}}
+expect:
+  events:
+    - {kind: ENTRY, order: L, price: 4998, reason: limit, flags: []}
+  position: {entry: 4998, stop: 4994, target: 5004}

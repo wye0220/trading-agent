@@ -1,0 +1,13 @@
+name: 过期之后的行情不成交
+description: 有效期到 09:40。09:40 开始的行情触及了触发价，订单已过期，不成交。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:39", b: [4998, 4999.5, 4997.5, 4999]}}
+  - {bar: {t: "09:40", b: [4999, 5003, 4998.5, 5002]}}
+expect:
+  events:
+    - {kind: EXPIRED, order: A, reason: TTL, flags: []}
+  position: null

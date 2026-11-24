@@ -1,0 +1,14 @@
+name: 截止后没有行情
+description: 截止时刻之后没有行情：仓位标为无法定价并记 UNABLE_TO_FLATTEN。次日第一根行情到来时按它的开盘价平仓。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "15:50", b: [5003, 5004, 5002.5, 5003.5]}}
+  - {flatten_check: "16:00:05"}
+  - {bar: {t: "2025-11-26 09:30", b: [5006, 5007, 5005, 5006.5]}}
+expect:
+  events:
+    - {kind: NOTE, reason: UNABLE_TO_FLATTEN, flags: [UNABLE_TO_FLATTEN, UNPRICEABLE]}
+    - {kind: EXIT, reason: FORCED_FLAT, price: 5006, flags: [UNABLE_TO_FLATTEN, UNPRICEABLE]}
+  position: null

@@ -1,0 +1,15 @@
+name: 激活前的触价不可用
+description: 订单 09:35:10 激活。完全在激活之前的行情触及了触发价，之后有效期内没有再触及，订单到期。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:10", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:35:00", len: 5, b: [4999.5, 5000.5, 4999.25, 4999.5]}}
+  - {bar: {t: "09:35:05", len: 5, b: [4999.5, 5000.25, 4999.25, 4999.5]}}
+  - {bar: {t: "09:36", b: [4999.5, 4999.75, 4998.5, 4999]}}
+  - {expire: "09:40:00"}
+expect:
+  events:
+    - {kind: EXPIRED, order: A, reason: TTL, flags: []}
+  orders: {A: EXPIRED}

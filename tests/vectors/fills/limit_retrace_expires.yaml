@@ -1,0 +1,13 @@
+name: LIMIT_RETRACE：没有回落到限价，到期
+description: 价格始终高于限价。
+date: 2025-11-25
+
+orders:
+  - {id: L, side: LONG, type: LIMIT_RETRACE, limit: 4998, stop: 4994, target: [ABSOLUTE_PRICE_TICKS, 5004], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [4999.5, 5000, 4998.25, 4999]}}
+  - {expire: "09:40:00"}
+expect:
+  events:
+    - {kind: EXPIRED, order: L, reason: TTL}
+  position: null

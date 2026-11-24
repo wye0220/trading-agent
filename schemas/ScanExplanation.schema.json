@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trading-agent/ScanExplanation.schema.json",
+  "title": "ScanExplanation",
+  "description": "对一次扫描结果的中文解释。只解释确定性引擎已给出的结果，不认定信号或成交。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "signal_status": {
+      "enum": [
+        "WAIT",
+        "SETUP_VALID",
+        "DATA_ERROR"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 12
+    },
+    "decision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600
+    },
+    "next_confirmation": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 600
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120
+      },
+      "maxItems": 50
+    },
+    "disclaimer": {
+      "const": "以上为规则化的价格行为学习标注，不构成投资建议。期货有杠杆，风险自负。"
+    }
+  },
+  "required": [
+    "event_id",
+    "snapshot_id",
+    "scope",
+    "signal_status",
+    "summary",
+    "decision",
+    "evidence_refs",
+    "disclaimer"
+  ]
+}

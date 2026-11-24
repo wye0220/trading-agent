@@ -1,0 +1,14 @@
+name: 跳空触发、回落成交、同根穿损
+description: 开盘 5003 越过限价；同一根回落，在限价 5001 成交，随后最低到 4995 穿过止损。止损优先，标 AMBIGUOUS_BAR。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:35", len: 300, b: [5003, 5003.5, 4995, 4996]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5001, reason: gap_return, flags: [AMBIGUOUS_ENTRY]}
+    - {kind: EXIT, order: A, reason: STOP, price: 4996, flags: [AMBIGUOUS_BAR, AMBIGUOUS_ENTRY]}
+  position: null

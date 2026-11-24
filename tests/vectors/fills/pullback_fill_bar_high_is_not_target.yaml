@@ -1,0 +1,13 @@
+name: 回落成交当根的最高价不算到达目标
+description: 开盘 5010，回落到限价 5001 成交。这根的最高价 5010 高于目标，但它可能出现在成交之前，不算。仓位保持，标 AMBIGUOUS_PATH。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [ABSOLUTE_PRICE_TICKS, 5009], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [5010, 5010, 5000.5, 5002]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5001, reason: gap_return}
+  position: {entry: 5001, target: 5009, flags: [AMBIGUOUS_PATH]}

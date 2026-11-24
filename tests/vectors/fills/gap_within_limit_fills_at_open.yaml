@@ -1,0 +1,13 @@
+name: 跳空但在限价之内，按开盘价成交
+description: 下一根开盘 5000.75，在触发价与限价之间，按开盘价成交。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [5000.75, 5002, 5000.5, 5001.5]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000.75, reason: open, flags: []}
+  position: {entry: 5000.75, stop: 4996, target: 5010.25}

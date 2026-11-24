@@ -1,0 +1,14 @@
+name: 从下方盘中触发后同根到达目标
+description: 开盘 4999 低于触发价，盘中触发于 5000。高于入场价的价格必然出现在入场之后，所以同根到达目标 5008 算数。
+date: 2025-11-25
+
+orders:
+  - {id: A, side: LONG, type: STOP_LIMIT_NEXT_BAR, trigger: 5000, limit: 5001, stop: 4996, target: [INITIAL_RISK_MULTIPLE, 2], armed: "09:35:05", expires: "09:40:00"}
+steps:
+  - {bar: {t: "09:36", b: [4999, 5008.5, 4998.5, 5008]}}
+expect:
+  events:
+    - {kind: TRIGGERED, order: A}
+    - {kind: ENTRY, order: A, price: 5000}
+    - {kind: EXIT, order: A, reason: TARGET, price: 5008, flags: []}
+  position: null

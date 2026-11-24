@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "trading-agent/PretradeCheck.schema.json",
+  "title": "PretradeCheck",
+  "description": "人工交易计划的预检结论。只给结论，不替用户下单。",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "plan_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "account_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "setup_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 120
+    },
+    "conclusion": {
+      "enum": [
+        "ALIGNED",
+        "DEVIATES",
+        "BLOCKED_BY_RISK"
+      ]
+    },
+    "strategy_alignment": {
+      "enum": [
+        "ALIGNED",
+        "DEVIATES",
+        "UNKNOWN"
+      ]
+    },
+    "risk_status": {
+      "enum": [
+        "NOT_EVALUATED",
+        "PASS",
+        "BLOCKED"
+      ]
+    },
+    "risk_reason": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 80
+    },
+    "discipline_flags": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "COUNTERTREND_BEFORE_CONFIRMATION",
+          "RETRY_WITHOUT_NEW_SETUP",
+          "NO_STOP",
+          "RISK_OVER_BUDGET",
+          "DAILY_LIMIT_HIT"
+        ]
+      }
+    },
+    "observable_conditions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 600
+      },
+      "maxItems": 10
+    },
+    "data_as_of_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 800
+    }
+  },
+  "required": [
+    "plan_id",
+    "account_id",
+    "scope",
+    "conclusion",
+    "strategy_alignment",
+    "risk_status",
+    "discipline_flags",
+    "summary"
+  ]
+}

@@ -1,0 +1,11 @@
+name: 到达目标
+description: 持有多仓，一根 K 最高价到达目标价而没有触及止损，在目标价平仓。
+date: 2025-11-25
+position: {side: LONG, entry: 5000, stop: 4996, target: 5008}
+
+steps:
+  - {bar: {t: "09:41", b: [5005, 5008, 5004.5, 5007]}}
+expect:
+  events:
+    - {kind: EXIT, reason: TARGET, price: 5008, flags: []}
+  position: null
