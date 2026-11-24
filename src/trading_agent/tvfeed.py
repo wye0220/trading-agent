@@ -4,7 +4,7 @@
 
 只读本地 JSON，不连 TradingView、Webull 或任何行情 API，也不往那个目录写东西。
 
-- 品种：MES1!（代表 ES）、MNQ1!（代表 NQ），TradingView 连续合约，点位与 ES／NQ 一致。按用户决定当作 ES／NQ 的行情：
+- 品种：ES1!、NQ1!（CME_MINI 标准合约的 TradingView 连续合约；2026-11-23 起 price-feed 从 MES1!／MNQ1! 改为它们）。按用户决定当作 ES／NQ 的行情：
   合约标识按 roll-v2 记实际合约，来源记为 tvfeed，来源质量不降级。
 - 换月：TradingView 的连续合约在到期日前后才切月，而系统按 roll-v2 在到期周的星期一就切到下一季。
   到期周里两边可能不是同一个合约，这几天不写本地线，当天由 Webull 接管。

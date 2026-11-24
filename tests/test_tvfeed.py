@@ -13,19 +13,19 @@ from trading_agent.release import manifest as RM
 D = date(2025, 11, 25)            # 放行首日
 CUT = date(2025, 11, 24)          # 截止日
 ROLL = date(2025, 12, 15)         # 2025-12 到期周的星期一：roll-v2 已切到 H2026，连续合约还是 Z2025
-CFG = {"source": "tvfeed", "symbols": {"MES1!": "ES"}, "primary_source": "tvfeed"}
+CFG = {"source": "tvfeed", "symbols": {"ES1!": "ES"}, "primary_source": "tvfeed"}
 
 
 def iso_ny(t):
     return datetime.fromtimestamp(t, sessions.NY).isoformat()
 
 
-def write_feed(root, day, *, fetched, price=5000.0, name="MES1!-1610", extra=()):
+def write_feed(root, day, *, fetched, price=5000.0, name="ES1!-1610", extra=()):
     d = root / day.isoformat()
     d.mkdir(parents=True, exist_ok=True)
     m5 = [{"time": s, "open": price, "high": price + 1, "low": price - 1, "close": price + 0.25, "volume": 10}
           for s in list(sessions.expected_rth_slots(day)) + list(extra)]
-    (d / f"{name}.bars.json").write_text(json.dumps({"symbol": "CME_MINI:MES1!", "fetched_at": iso_ny(fetched),
+    (d / f"{name}.bars.json").write_text(json.dumps({"symbol": "CME_MINI:ES1!", "fetched_at": iso_ny(fetched),
                                                       "m5": m5, "d1": [], "quote": {}}), encoding="utf-8")
     return d
 
@@ -56,6 +56,17 @@ def test_local_bars_are_written_as_primary(tenv, tmp_path):
                           (D.isoformat(),)).fetchone()
     assert tuple(td) == ("tvfeed", 1, 0)                                 # 主来源：不降级，是有效交易日
     assert run(tenv, feed, close + 180)["existing"] == 78                # 重复读取不重复写
+
+
+def test_only_standard_contract_lines_are_read(tenv, tmp_path):
+    feed = tmp_path / "feed"
+    close = sessions.rth_bounds(D)[1]
+    write_feed(feed, D, fetched=close + 60)
+    write_feed(feed, D, fetched=close + 90, price=6000.0, name="MES1!-1610")   # 旧的微型线：不读
+    r = run(tenv, feed, close + 120)
+    assert r["files_read"] == 1 and r["new_bars"] == 78
+    hi = tenv.con.execute("SELECT MAX(high) FROM bars WHERE trading_day=?", (D.isoformat(),)).fetchone()[0]
+    assert hi == (5000 + 1) * 4
 
 
 def test_local_wins_over_webull(tenv, tmp_path):

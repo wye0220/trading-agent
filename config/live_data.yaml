@@ -7,12 +7,12 @@ from_day:
   NQ: 2026-11-24
 
 # 本地 TradingView 线（2026-11-24 用户决定为盘中主来源，Webull 备用）：~/trading-desk 的 price-feed 流水线
-# 存在本地的 5 分钟线，只读。MES1!／MNQ1! 当作 ES／NQ 的行情，合约按 roll-v2 记实际合约，不降级。
+# 存在本地的 5 分钟线，只读。ES1!／NQ1!（标准合约连续线）当作 ES／NQ 的行情，合约按 roll-v2 记实际合约，不降级。
 # 到期周（roll-v2 已切月、连续合约还没切）不写本地线，当天由 Webull 接管。
 tvfeed:
   source: tvfeed
   feed_root: /Users/wenye/trading-desk/state/price-feed
   symbols:
-    "MES1!": ES
-    "MNQ1!": NQ
+    "ES1!": ES
+    "NQ1!": NQ
   primary_source: tvfeed

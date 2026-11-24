@@ -155,7 +155,7 @@ instrument_root,contract_id,timeframe,bar_start_utc,open,high,low,close,volume,s
 盘中行情以本地 TradingView 线为主，Webull 为备用。本地线是 `~/trading-desk` 的 price-feed 流水线每 5 分钟从 TradingView 读一次、存在本地的 5 分钟线（`state/price-feed/<美东日期>/`，保留 10 天）。
 
 - **只读**：只读本地 JSON，不连 TradingView、Webull 或任何行情 API，不往那个目录写东西。`collect --from-tvfeed` 把它写成数据合同 CSV（`<data_root>/tvfeed/<根代码>/<合约>/<交易日>.csv`，来源 `tvfeed`，取数时刻用文件里的 `fetched_at`），再导入。
-- **品种**：`MES1!` 代表 ES，`MNQ1!` 代表 NQ，TradingView 连续合约，点位与 ES／NQ 一致。按用户决定当作 ES／NQ 的行情：合约标识按 roll-v2 记实际合约，来源质量不降级。微型合约与标准合约之间偶有一两个 tick 的差异，纸面账本按本地线的价格记。
+- **品种**：`ES1!`、`NQ1!`，CME 标准合约的 TradingView 连续合约（2026-11-23 起 price-feed 从 `MES1!`／`MNQ1!` 改为它们，只读这两个，旧的微型线即使还在目录里也不读）。按用户决定当作 ES／NQ 的行情：合约标识按 roll-v2 记实际合约，来源质量不降级。
 - **优先级**：`source_priority` 是 `databento, tvfeed, webull`。引擎每天只按优先级选一个来源，一旦当天本地线有了 RTH 线就一直用它（阶段 3 冻结的行为）。
 - **Webull 什么时候用**：盘中脚本只在本地线当天没有任何 RTH 线时（price-feed 没跑，或到期周）才起 `claude -p` 会话取 Webull（`collect --need-webull` 判断）；那天节拍记 WARN `BACKUP_SOURCE_IN_USE`。本地线**午盘中途**断了不会切到 Webull，照样报断流。17:12 的 Webull 每日全量采集照常，作为当天的完整记录。
 - **到期周不用本地线**：TradingView 的连续合约到期日前后才切月，而 roll-v2 在到期周的星期一就切到下一季；到期周里两边可能不是同一个合约，这几天的本地线一律不写，由 Webull 实际合约接管。

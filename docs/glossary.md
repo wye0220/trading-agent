@@ -119,7 +119,7 @@
 ## 回放与基线（阶段 5）
 
 - **开发可见截止日（`dev_visible_through`）**：开发数据和保留数据的分界，现为 2024-12-31。晚于它的 K 线不进运行库，只记覆盖和内容摘要。
-- **本地 TradingView 线 `tvfeed`**：trading-desk price-feed 存在本地的 TradingView MES1!／MNQ1! 5 分钟线，只读。2026-11-24 起是盘中主来源（优先于 Webull），合约按 roll-v2 记实际合约，不降级；到期周不用，由 Webull 接管。
+- **本地 TradingView 线 `tvfeed`**：trading-desk price-feed 存在本地的 TradingView ES1!／NQ1! 5 分钟线，只读。2026-11-24 起是盘中主来源（优先于 Webull），合约按 roll-v2 记实际合约，不降级；到期周不用，由 Webull 接管。
 - **实时行情放行（`config/live_data.yaml`）**：登记来源从登记首日起的 K 线，晚于截止日也进运行库，只供纸面运行、影子和监控；切分登记把这些日子排除在所有段之外。
 - **内容摘要**：逐根 K 线的 sha256 当作 256 位整数相加取模，与顺序无关。不保存价格也能核对内容。
 - **有效交易日**：当日实际合约的 RTH 数据完整且来源质量未降级。零交易日也是有效日。
