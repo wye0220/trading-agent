@@ -57,4 +57,25 @@
 3. 执行的命令和真实结果（pytest 摘要）
 4. 新增假设及写入位置
 5. 下一阶段可复现的输入
-测试未全部通过不算完成；在当前分支提交，不合并到 main，等我确认。
+测试未全部通过不算完成。提交、开 PR、合并按下面的流程自动完成。
+
+
+## 分支、PR 与合并（自动完成，不用每次问）
+
+`main` 是基线，不在 `main` 上直接改代码。主目录 `/Users/wenye/trading-agent` 有定时任务在跑，不切它的分支。每个功能：
+
+1. 同步并建隔离工作区：`git -C /Users/wenye/trading-agent pull -q`，`git -C /Users/wenye/trading-agent worktree add -q ../trading-agent-<功能> -b feature/<简短名字> main`。只在这个 worktree 里改代码。worktree 没有 `.env`、虚拟环境和数据，需要真实数据时用环境变量或绝对路径指回主目录，只读。
+2. 改代码、补测试、同步文档（README、CLAUDE.md 里相关的段落）。
+3. 跑相关测试，全部通过才继续；失败就修，不跳过。改了共享模块，依赖它的测试一起跑。
+4. 提交前 `git status --short` 核对暂存区：只有这次的代码和文档，没有运行时产物、日志、凭据（`.env`、token、`*.local.json`）和 IDE 文件。
+5. 提交信息用中文，说明为什么改、改了什么，结尾加 `Co-Authored-By: Claude <noreply@anthropic.com>`。
+6. 推送并开 PR：`git push -u origin feature/<名字>`；`gh pr create --base main --title "<类型>(<范围>): <一句话>"`，正文写为什么、改了什么、怎么验证的。
+7. 合并，并核对真的合并了再清理：`gh pr merge feature/<名字> --merge`；`gh pr view feature/<名字> --json state -q .state` 必须是 `MERGED`。不是就停下查原因（检查没过、有冲突、需要审批），不要删分支：删远端分支会把没合并的 PR 自动关掉。
+8. 确认 `MERGED` 后清理并更新主目录：`git -C <主目录> pull -q`；`git -C <主目录> worktree remove --force ../trading-agent-<功能>`；`git -C <主目录> branch -D feature/<名字>`；`git -C <主目录> push origin --delete feature/<名字>`。
+9. 改动影响正在运行的服务或定时任务时：合并后在主目录确认新代码生效（重启进程、重装定时任务），实际跑一轮看日志或输出，再汇报。
+
+规则：
+
+- 一个功能一个分支，不从别的功能分支再分，不把不相干的改动堆在一起。
+- 破坏性操作（删数据、改账本、force push、改别人的分支）先问，不在这个流程里自动做。
+- 汇报时写 PR 编号、测试结果、上线验证结果；没验证的写"没验证"，不要说成已完成。
