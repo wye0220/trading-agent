@@ -12,7 +12,7 @@ holdout_root: /Users/Shared/trading-holdout   # 2026-11-24：移出主目录（o
 available_at_delay_seconds: 5
 
 # 同一交易日多个来源都有数据时，按此顺序选一个，整日使用。
-source_priority: [databento, webull, tvfeed]   # tvfeed：TradingView 备用线（2026-11-24），只在前两者都没有时选中
+source_priority: [databento, tvfeed, webull]   # 2026-11-24：盘中本地 TradingView 线（tvfeed）为主，Webull 备用
 
 # 可选。设了以后，交易日晚于它的 K 线不进运行库。留空则全部导入，
 # 报告标 HOLDOUT_BOUNDARY_NOT_SET。格式 YYYY-MM-DD。
