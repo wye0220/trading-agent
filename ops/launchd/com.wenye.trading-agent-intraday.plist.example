@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  样例，未安装（阶段 10）。每 5 分钟：盘中取数（claude -p 调 Webull 连接器）并跑节拍；脚本只在交易日 09:30–16:10 ET 内做事。
+  样例（阶段 10）。每小时 :00、:05 … :55 准点触发（与 5 分钟线收线对齐），脚本等 20 秒后取数（claude -p 调 Webull 连接器）并跑节拍；只在交易日 09:30–16:10 ET 内做事，其余时刻直接退出。上一次还没跑完时 launchd 不会再起一个。
   安装（要你授权）：cp 到 ~/Library/LaunchAgents/（去掉 .example），然后
     launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.wenye.trading-agent-intraday.plist
   停用：launchctl bootout gui/$(id -u)/com.wenye.trading-agent-intraday
@@ -21,7 +21,21 @@
         <key>TZ</key><string>America/New_York</string>
         <key>PATH</key><string>/Users/wenye/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
-    <key>StartInterval</key><integer>300</integer>
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Minute</key><integer>5</integer></dict>
+        <dict><key>Minute</key><integer>10</integer></dict>
+        <dict><key>Minute</key><integer>15</integer></dict>
+        <dict><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Minute</key><integer>25</integer></dict>
+        <dict><key>Minute</key><integer>30</integer></dict>
+        <dict><key>Minute</key><integer>35</integer></dict>
+        <dict><key>Minute</key><integer>40</integer></dict>
+        <dict><key>Minute</key><integer>45</integer></dict>
+        <dict><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Minute</key><integer>55</integer></dict>
+    </array>
     <key>RunAtLoad</key><false/>
 </dict>
 </plist>

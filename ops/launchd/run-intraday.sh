@@ -12,6 +12,13 @@ LOGDIR="$DATA/logs/ops"; mkdir -p "$LOGDIR"
 LOG="$LOGDIR/$(date +%F)-intraday.log"
 cd "$PROJECT" || exit 2
 UV="${UV_BIN:-$HOME/.local/bin/uv}"
+# 按交易日历：休市日、提前收盘之后都不起 claude 会话（只在 RTH 开盘到收盘后 10 分钟内做事）
+"$UV" run python -c "
+import sys, time
+from trading_agent import sessions
+d = sessions.trading_day_at(int(time.time()))
+o, c = sessions.rth_bounds(d) if d and sessions.is_trading_day(d) else (0, 0)
+sys.exit(0 if o <= time.time() <= c + 600 else 1)" 2>>"$LOG" || exit 0
 sleep "${COLLECT_WAIT_SECONDS:-20}"                       # 等收线后数据就位
 REQ=$("$UV" run python -m trading_agent collect --mcp-request 2>>"$LOG") || { echo "算不出请求参数" >>"$LOG"; REQ=""; }
 if [[ -n "$REQ" ]]; then
