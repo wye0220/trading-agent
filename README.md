@@ -15,7 +15,8 @@ ES、RTH 5 分钟、行情只读、纸面模拟。没有任何实盘下单功能
 | 6B 聚合演化 | 完成（确定性聚合、候选台账、双轨队列；模型归纳一步只留接口） | `docs/evolve.md` |
 | 7 Memory 存储 | 完成（结构化条目、版本快照与回滚；市场事实和执行模式等阶段 8 评测后才能生效） | `docs/memory.md` |
 | 8 独立评测 | 完成（预登记、盲筛、正式确认、事故回归库；隔离验收未通过，真实窗口未解封） | `docs/evaluation-protocol.md` |
-| 9 及以后 | 未开始 | — |
+| 9 影子、发布、回滚与监控 | 完成（在临时库上演练了完整的纸面晋级；真实 scope 还没有 active 版本，批准要你在终端里确认） | `docs/release-policy.md` |
+| 10 调度、告警与控制通道 | 未开始 | — |
 
 ## 环境
 
@@ -84,6 +85,10 @@ uv run python -m trading_agent evolve --ledger                                 #
 uv run python -m trading_agent memory                                          # 长期记忆：当前版本、生效条目、待确认的候选
 uv run python -m trading_agent evaluate                                        # 评测状态：登记、窗口占用、余下的 α
 uv run python -m trading_agent evaluate --isolation-check                      # 隔离验收
+uv run python -m trading_agent release --status                                # active 版本、入场权限、冻结、待批准清单
+uv run python -m trading_agent release --initial-baseline                      # 首次纸面基线的清单（批准要在终端里手动确认）
+uv run python -m trading_agent freeze --reason "..."                           # 冻结新入场；--unfreeze 解除
+uv run python -m trading_agent monitor                                         # 发布后监控（收盘后）
 
 # 只读采集已收线的 5 分钟线，追加到 CSV 并入库（暂不可用，见下文）
 uv run python -m trading_agent collect
@@ -91,7 +96,7 @@ uv run python -m trading_agent collect
 
 `--scope` 的格式是 `strategy_family:instrument_root:session_type:timeframe`，缺省 `pa_brooks:ES:RTH:5m`。
 
-其余子命令（`evaluate`、`shadow`、`release`、`rollback`、`freeze`、`monitor`）返回 `NOT_IMPLEMENTED`，由后续阶段实现。
+影子、发布、回滚、冻结和监控的完整用法见 `docs/release-policy.md`。
 
 ## 每日采集（Webull MCP 连接器）
 

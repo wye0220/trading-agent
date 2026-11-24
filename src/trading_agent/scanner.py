@@ -90,8 +90,16 @@ def _merge(settings: Settings, con, scope: Scope, validation: dict, step: dict |
 
 
 def live_scan(settings: Settings, con: sqlite3.Connection, scope: Scope, strategy, *, now_utc: int | None = None,
-              risk_cfg: RiskConfig | None = None, engine_cfg: EngineConfig | None = None) -> dict:
-    """盘中扫描。先校验数据；有异常时不产生新信号，已有的纸面仓位照常管理。"""
+              risk_cfg: RiskConfig | None = None, engine_cfg: EngineConfig | None = None,
+              release_con: sqlite3.Connection | None = None, registry=None) -> dict:
+    """盘中扫描。先校验数据；有异常时不产生新信号，已有的纸面仓位照常管理。
+
+    给了发布库（只读连接）时，在它的一个读事务里解析该 scope 的 active 版本：策略、版本元组都取自同一快照，
+    所以别的进程此刻批准新版本，也只从下一次扫描起生效。已有订单和仓位保留生成时的版本元组。
+    """
+    from .release import freeze as rfreeze
+    from .release import manifest as rman
+    from .release import pointer
     risk_cfg = risk_cfg or load_risk(settings.project_root)
     engine_cfg = engine_cfg or load_engine(settings.project_root)
     now = int(time.time()) if now_utc is None else now_utc
@@ -100,9 +108,31 @@ def live_scan(settings: Settings, con: sqlite3.Connection, scope: Scope, strateg
     run = _ensure_run(con, scope, strategy, run_id, "paper")
     bad = validation["signal_status"] == "DATA_ERROR"
     _set_data_block(con, scope, run["risk_domain"], bad, validation["block_reason"], now)
-    step = runner.step(settings, con, run_id, strategy, max(now, run["watermark_utc"]), risk_cfg=risk_cfg,
-                       engine_cfg=engine_cfg)
-    return _merge(settings, con, scope, validation, step, run_id, None)
+    rfreeze.apply_policies(con, scope, now)
+    release = None
+    if release_con is not None:
+        release_con.execute("BEGIN")
+    try:
+        act = pointer.resolve(release_con, scope)
+        if act is not None:
+            diff = (act["manifest"] or {}).get("config_diff") or {}
+            if diff:
+                if registry is None:
+                    from .strategies.registry import default_registry
+                    registry = default_registry()
+                strategy = rman.strategy_for(registry, scope, diff, act["release_id"][-8:])
+            release = {"release_id": act["release_id"], "manifest_hash": act["manifest_hash"],
+                       "entries_enabled": act["entries_enabled"], "strategy_version": strategy.version}
+            if not act["entries_enabled"]:
+                rfreeze.freeze(con, scope, "RELEASE", "active 指针的入场权限已停用", "release")
+        step = runner.step(settings, con, run_id, strategy, max(now, run["watermark_utc"]), risk_cfg=risk_cfg,
+                           engine_cfg=engine_cfg, release_con=release_con)
+    finally:
+        if release_con is not None and release_con.in_transaction:
+            release_con.execute("COMMIT")
+    out = _merge(settings, con, scope, validation, step, run_id, None)
+    out["release"] = release
+    return out
 
 
 def historical_scan(settings: Settings, con: sqlite3.Connection, scope: Scope, strategy, as_of_utc: int, *,

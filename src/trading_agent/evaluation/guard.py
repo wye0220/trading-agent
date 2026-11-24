@@ -44,8 +44,10 @@ def evaluator_digest(project_root: Path) -> str:
 
 
 def digests(settings: Settings) -> dict:
+    from ..release.guard import release_digest     # 发布服务的代码由同一份受保护清单签收（阶段 9）
     return {"evaluator_sha256": evaluator_digest(settings.project_root),
-            "engine_sha256": code_digest(settings.project_root)}
+            "engine_sha256": code_digest(settings.project_root),
+            "release_sha256": release_digest(settings.project_root)}
 
 
 def manifest_path(settings: Settings) -> Path:

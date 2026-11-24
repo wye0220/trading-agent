@@ -234,6 +234,10 @@ def run(settings: Settings, con: sqlite3.Connection, scope: Scope | None, run_id
         if seal_first:
             seal.seal_manual(settings, con, account_id, date.fromisoformat(trading_day), manual_cfg)
     else:
+        from ..release.shadow import reserved_window_start
+        hold = reserved_window_start(con, str(scope)) if scope is not None else None
+        if hold and trading_day >= hold:
+            raise ReviewError("FORWARD_HOLDOUT", f"{trading_day} 在进行中的前向保留窗口里（起于 {hold}）：影子结束前不复盘")
         sid = seal.session_id(run_id, trading_day)
         if seal_first:
             seal.seal(settings, con, scope, run_id, date.fromisoformat(trading_day), engine_cfg)

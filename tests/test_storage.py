@@ -27,7 +27,7 @@ def test_runtime_tables_exist(env):
 def test_release_db_is_separate(env):
     rel = db.open_release(env.settings)
     try:
-        assert db.tables(rel) == {"schema_migrations", "active_pointers", "release_events"}
+        assert db.tables(rel) == {"schema_migrations", "active_pointers", "release_events", "release_manifests"}
         assert "active_pointers" not in db.tables(env.con) and "release_events" not in db.tables(env.con)
         pk = [r[1] for r in rel.execute("PRAGMA table_info(active_pointers)") if r[5]]
         assert set(pk) == {"strategy_family", "instrument_root", "session_type", "timeframe"}
@@ -54,7 +54,7 @@ def test_reinit_keeps_data(env):
     assert db.migrate(env.con, "runtime") == []
     con2 = db.open_runtime(env.settings)
     assert con2.execute("SELECT COUNT(*) FROM alerts").fetchone()[0] == 1
-    assert db.applied_migrations(con2) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation"]
+    assert db.applied_migrations(con2) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release"]
     con2.close()
 
 

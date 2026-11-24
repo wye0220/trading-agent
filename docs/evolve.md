@@ -37,6 +37,7 @@ uv run python -m trading_agent evolve --ledger                          # 队列
 | --- | --- |
 | `AFTER_DEV_CUTOFF` | 策略轨、真实数据、交易日晚于开发可见截止日（或截止日没设） |
 | `SHADOW_WINDOW` | 运行模式是 `pre_eval_shadow` 或 `live_shadow` |
+| `FORWARD_HOLDOUT` | 交易日落在进行中的前向保留影子窗口里（阶段 9，影子结束前） |
 
 人工轨的 session 只含你自己的计划、成交和提醒，不含行情，不受截止日限制。
 

@@ -1,0 +1,59 @@
+# 影子、发布、冻结与发布后监控的预设（阶段 9）。数值都是实验预设，需要你确认；
+# 改动应发生在相关影子登记或发布清单生成之前：登记和清单会把当时的取值冻结进去。
+version: release-policy-v1
+
+approval:
+  approvers: [wenye]                 # 只有这些系统用户能在终端里批准、回滚、解除人工或监控冻结
+  confirm_prefix_chars: 12           # 批准时要手动输入清单摘要的前几位
+  evaluation_max_age_days: 120       # 正式确认结果超过这么多天就算过期
+  shadow_max_age_days: 30            # 影子结束超过这么多天就算过期
+
+shadow:
+  min_valid_days: 20                 # 影子的有效 RTH 交易日下限
+  max_valid_days: 60                 # 按候选频次加长时的上限
+  min_fills_per_arm: 15              # 每臂至少这么多笔可核算的模拟成交
+  expected_fill_ratio: 0.8           # 预期成交数 × 这个比例要够最低成交数，不够就加长有效日数
+  window_kind: OPERATIONAL_ACCEPTANCE   # OPERATIONAL_ACCEPTANCE 或 FORWARD_HOLDOUT
+  max_data_error_days: 0             # 窗口内允许几个数据异常日（异常日不计入有效日）
+  noninferiority:                    # 发布政策另要求统计非劣效时打开；登记时冻结
+    enabled: false
+    margin_r_per_day: 0.05
+    alpha: 0.05
+    max_drawdown_increase_r: 3.0
+
+pre_eval_shadow:
+  top_n: 3                           # 每个 scope 队列前几名挂实时行情做前向预演
+
+initial_baseline:
+  min_paper_run_days: 5              # 首次纸面基线的纸面运行验收：常驻纸面运行至少处理过这么多个有效交易日
+  regression_groups:                 # 工程、逐 bar 向量、只读权限三项验收各跑哪些测试
+    engineering:
+      - tests/test_engine_runner.py
+      - tests/test_fills.py
+      - tests/test_risk.py
+      - tests/test_validate.py
+      - tests/test_features.py
+    vectors:
+      - tests/test_pa_brooks.py
+      - tests/test_strategy_spi.py
+    read_only:                       # 券商与行情适配器里没有下单、改单、撤单调用
+      - tests/test_collect.py::test_no_trading_api_in_source
+      - tests/test_equity_manual.py::test_alpaca_code_is_read_only
+      - tests/test_watch.py::test_adapter_interface_is_read_only
+      - tests/test_collect_mcp.py::test_ops_scripts_are_read_only_and_keep_secrets_out
+
+monitor:
+  rolling_valid_days: 20             # 滚动窗口
+  net_r_sigma_multiple: 3.0          # 滚动净 R／日低于 预期均值 − k·σ/√n 触发
+  drawdown_multiple: 1.0             # 激活以来回撤超过 预期最大回撤 × 这个倍数 触发
+  frequency_ratio: 3.0               # 成交或信号频率与预期之比超出 [1/k, k] 触发
+  ambiguous_bar_multiple: 3.0        # AMBIGUOUS_BAR 占比超过 max(k × 预期, 下限) 触发
+  ambiguous_bar_floor: 0.05
+  ambiguous_min_trades: 10
+  notify_command: ops/notify-telegram.sh   # 告警脚本（项目内路径）；留空只写记录不发消息
+
+# 冻结原因与解除政策
+freeze:
+  auto_release: [DATA, DAILY_LOSS]   # DATA：数据恢复后自动解除；DAILY_LOSS：下一个交易日自动解除
+  human_release: [MANUAL, MONITOR]   # 只能由批准人在终端里解除
+  approval_release: [RELEASE]        # 只能由新的批准解除

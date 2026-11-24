@@ -22,7 +22,7 @@ def test_help_lists_all_subcommands(capsys):
         main(["--help"])
     assert e.value.code == 0
     out = capsys.readouterr().out
-    assert len(COMMANDS) == 16 and len(NOT_IMPL) == 5
+    assert len(COMMANDS) == 16 and len(NOT_IMPL) == 0     # 阶段 9 之后全部子命令都已实现
     for name in ("ingest", "collect", "scan", "plan", "watch", "replay", "review", "evolve", "evaluate", "shadow",
                  "release", "rollback", "freeze", "monitor"):
         assert f"\n    {name} " in out
@@ -119,6 +119,7 @@ def test_scan_with_no_data(env, capsys):
 def test_module_entry_point():
     import subprocess
     import sys
-    p = subprocess.run([sys.executable, "-m", "trading_agent", "shadow"], capture_output=True, text=True, cwd=H.PROJECT)
-    assert p.returncode == 3 and json.loads(p.stdout)["status"] == "NOT_IMPLEMENTED"
+    # 只看帮助：不加载配置、不打开真实运行库
+    p = subprocess.run([sys.executable, "-m", "trading_agent", "--help"], capture_output=True, text=True, cwd=H.PROJECT)
+    assert p.returncode == 0 and "monitor" in p.stdout
     assert cli.COMMANDS["replay"] == 5 and cli.COMMANDS["evolve"] == "6B"

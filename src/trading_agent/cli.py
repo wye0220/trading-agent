@@ -16,7 +16,8 @@ COMMANDS = {
     "plan": 4, "watch": 4, "replay": 5, "baseline": 5, "review": "6A", "evolve": "6B",
     "memory": 7, "evaluate": 8, "shadow": 9, "release": 9, "rollback": 9, "freeze": 9, "monitor": 9,
 }
-IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory", "evaluate"}
+IMPLEMENTED = {"ingest", "collect", "scan", "plan", "watch", "replay", "baseline", "review", "evolve", "memory", "evaluate",
+               "shadow", "release", "rollback", "freeze", "monitor"}
 HELP = {
     "ingest": "扫描数据根目录，增量导入行情并生成数据可得性报告",
     "collect": "只读采集已收线的 K 线并入库。目前唯一的适配器是 Webull，而该账号没有期货行情，所以暂不可用",
@@ -26,7 +27,10 @@ HELP = {
     "baseline": "冻结基线：登记数据切分、回放两次校验一致、生成基线报告和功效测算",
     "review": "为已封存的 session 生成日复盘（规则生成，不调用模型）", "evolve": "跨日聚合已复盘的观察，生成候选并维护候选台账和队列（不调用模型，不读保留集）", "evaluate": "独立评测：预登记、盲筛、正式确认、回归库、隔离检查（评测真实窗口需要评测身份）",
     "memory": "长期记忆：列出、确认、拒绝、否定、回滚（条目只有结构化字段，不调用模型）",
-    "shadow": "影子运行", "release": "发布", "rollback": "回滚", "freeze": "冻结", "monitor": "发布后监控",
+    "shadow": "正式影子（登记、两臂步进、终点判定）和队列的实时前向预演",
+    "release": "发布清单、人工批准（终端里手动确认）和发布状态",
+    "rollback": "把一个 scope 回滚到上一已批准的纸面版本（没有上一版本时冻结并停用入场）",
+    "freeze": "冻结或解除一个 scope 的新入场（按原因记录和解除）", "monitor": "发布后监控：滚动指标、触发即冻结并告警",
 }
 
 
@@ -126,6 +130,29 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "baseline":
             sp.add_argument("--skip-power", action="store_true", help="只冻结基线和出基线报告，不跑扰动和功效测算")
             sp.add_argument("--jobs", type=int, default=1, metavar="N", help="并行回放扰动的进程数（缺省 1）")
+        if name == "shadow":
+            sp.add_argument("--register", metavar="候选", help="为通过正式确认的候选登记正式影子（计划在登记时冻结）")
+            sp.add_argument("--start-day", metavar="YYYY-MM-DD", help="影子起始交易日（缺省为下一个交易日；必须晚于已有数据）")
+            sp.add_argument("--step", action="store_true", help="以此刻为决策时点推进全部影子两臂和队列的实时前向预演")
+            sp.add_argument("--finish", metavar="候选", help="到预登记终点后判定影子结果（不到终点会被拒绝）")
+            sp.add_argument("--status", action="store_true", help="影子登记、进度和结果")
+        if name == "release":
+            sp.add_argument("--prepare", metavar="候选", help="为影子通过的候选生成发布清单")
+            sp.add_argument("--initial-baseline", nargs="?", const="INITIAL", metavar="BASELINE_ID",
+                            help="为没有 active 的 scope 生成首次纸面基线清单（缺省取最新的冻结基线）")
+            sp.add_argument("--approve", metavar="候选或BASELINE_ID", help="批准并切换 active（要配 --manifest-hash，并在终端里手动确认）")
+            sp.add_argument("--manifest-hash", metavar="SHA256", help="要批准的清单摘要")
+            sp.add_argument("--status", action="store_true", help="active 版本、入场权限、冻结原因、待批准清单")
+        if name == "rollback":
+            sp.add_argument("--reason", default="MANUAL", help="回滚原因（记入审计）")
+        if name == "freeze":
+            sp.add_argument("--cause", default="MANUAL", help="MANUAL（缺省）、MONITOR、DAILY_LOSS、RELEASE")
+            sp.add_argument("--reason", help="原因说明")
+            sp.add_argument("--cancel-working", action="store_true", help="同时撤掉未成交的入场单")
+            sp.add_argument("--unfreeze", action="store_true", help="按政策解除这个原因的冻结")
+            sp.add_argument("--status", action="store_true", help="只显示冻结状态")
+        if name == "monitor":
+            sp.add_argument("--day", metavar="YYYY-MM-DD", help="按这个交易日收盘计算（缺省为最近一个交易日）")
         if name not in IMPLEMENTED:
             sp.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
     return p
@@ -133,7 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _emit(obj: dict, as_json: bool, text: str | None = None):
     if as_json or text is None:
-        print(json.dumps(obj, ensure_ascii=False, indent=2))
+        print(json.dumps(obj, ensure_ascii=False, indent=2, default=str))
     else:
         print(text)
 
@@ -241,6 +268,8 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
             return _memory(args, settings, con, scope)
         if args.command == "evaluate":
             return _evaluate(args, settings, con, scope, registry)
+        if args.command in ("shadow", "release", "rollback", "freeze", "monitor"):
+            return _release(args, settings, con, scope, registry)
         if args.command == "evolve":
             return _evolve(args, settings, con, scope, registry)
 
@@ -330,7 +359,14 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
                 return 2
             strategy = (registry or default_registry()).get(scope.strategy_family)
             if as_of is None:
-                r = scanner.live_scan(settings, con, scope, strategy)
+                from .release import pointer
+                rcon = pointer.open_readonly(settings.release_db)      # 盘中只读发布库
+                try:
+                    r = scanner.live_scan(settings, con, scope, strategy, release_con=rcon,
+                                          registry=registry or default_registry())
+                finally:
+                    if rcon is not None:
+                        rcon.close()
             else:
                 r = scanner.historical_scan(settings, con, scope, strategy, as_of,
                                             allow_real_data=args.allow_real_data)
@@ -378,6 +414,118 @@ def _collect_mcp(args, settings, con, scope) -> int:
     _emit({"ok": ok, "fetched_at_utc": sessions.iso(now), "results": results}, args.json,
           "\n".join(lines) or "文件里没有任何合约。")
     return 0 if ok else 1
+
+
+def _release(args, settings, con, scope, registry) -> int:
+    """阶段 9 的五个子命令。写发布库的只有 --approve 和 rollback，它们要你在终端里手动确认。"""
+    from .engine.config import load_engine, load_risk
+    from .release import freeze as rfreeze
+    from .release import monitor as rmon
+    from .release import pointer
+    from .release import run as rrun
+    from .release import shadow as rshadow
+    from .release.config import load_release
+    from .release.guard import ReleaseError, cli_confirm
+    cfg = load_release(settings.project_root)
+    reg = _registry(registry)
+    risk_cfg = load_risk(settings.project_root)
+    ro = pointer.open_readonly(settings.release_db)
+    try:
+        cmd = args.command
+        if cmd == "shadow":
+            if args.register:
+                r = rshadow.register(settings, con, ro, scope, args.register, cfg, registry=reg, risk_cfg=risk_cfg,
+                                     start_day=args.start_day)
+                p = r["plan"]
+                text = (f"已登记影子 {r['shadow_id']}：基线臂 {r['base_release']}，起始日 {p['start_day']}，"
+                        f"{p['valid_days']} 个有效日，每臂至少 {p['min_fills_per_arm']} 笔，窗口性质 {p['window_kind']}"
+                        + ("（按预期频次凑不够最低成交数，结果多半是 EVIDENCE_INSUFFICIENT）" if p["low_frequency"] else "") + "。")
+            elif args.step:
+                r = rshadow.step(settings, con, scope, cfg, registry=reg, risk_cfg=risk_cfg,
+                                 engine_cfg=load_engine(settings.project_root))
+                text = (f"{r['trading_day']} 影子 {len(r['shadows'])} 个、实时前向预演 {len(r['pre_eval_shadow'])} 个已推进"
+                        f"（数据 {r['data_status']}）。")
+            elif args.finish:
+                r = rshadow.finish(settings, con, scope, args.finish, cfg, risk_cfg=risk_cfg)
+                text = (f"影子 {r.get('shadow_id')}：{r.get('status')}" + (f"（{'、'.join(r['reasons'])}）" if r.get("reasons") else "")
+                        + (f"\n报告：{r['report']}" if r.get("report") else ""))
+            else:
+                r = rrun.status(con, ro, scope)
+                text = "\n".join([f"影子 {len(r['shadows'])} 个："] + [
+                    f"  {s['shadow_id']} {s['candidate_id']} 起于 {s['start_day']}，{s['valid_days']} 日，结果 {s['result'] or '进行中'}"
+                    for s in r["shadows"]])
+                r = {"scope": r["scope"], "shadows": r["shadows"]}
+        elif cmd == "release" and (args.prepare or args.initial_baseline):
+            target = args.prepare or args.initial_baseline
+            r = rrun.prepare(settings, con, ro, scope, target, cfg, registry=reg, risk_cfg=risk_cfg)
+            r.pop("manifest")
+            text = (f"发布清单 {r['release_id']}（{r['release_type']}）\nmanifest_hash：{r['manifest_hash']}\n"
+                    + ("" if r["acceptance_passed"] else "验收没有全部通过：现在不能批准，详见清单。\n")
+                    + f"清单：{r['files']['md']}")
+        elif cmd == "release" and args.approve:
+            if not args.manifest_hash:
+                raise ReleaseError("NO_MANIFEST_HASH", "批准要用 --manifest-hash 指定清单摘要")
+            approval = cli_confirm(cfg, f"批准 {args.approve} 发布到 {scope}", args.manifest_hash)
+            rw = db.open_release(settings)
+            try:
+                r = rrun.approve(settings, con, rw, scope, args.approve, args.manifest_hash, approval, cfg,
+                                 registry=reg, risk_cfg=risk_cfg)
+            finally:
+                rw.close()
+            text = f"{r['status']}：{scope} 的 active 现在是 {r['release_id']}。新版本从下一次扫描起生效。"
+        elif cmd == "release":
+            r = rrun.status(con, ro, scope)
+            a = r["active"]
+            text = "\n".join([
+                f"{scope}：" + (f"active {a['release_id']}（{a['release_type']}{'，' + '、'.join(a['labels']) if a['labels'] else ''}），"
+                               f"入场{'允许' if a['entries_enabled'] else '已停用'}" if a else "没有 active 版本（盘中扫描标 UNRELEASED）"),
+                f"冻结：{r['freeze']['paper_frozen_reason'] or '无'}",
+                f"待批准的清单 {len(r['pending'])} 份" + "".join(f"\n  {x['release_id']} {x['target']} {x['manifest_hash']}" for x in r["pending"])])
+        elif cmd == "rollback":
+            if ro is None or pointer.resolve(ro, scope) is None:
+                raise ReleaseError("NO_ACTIVE", f"{scope} 没有 active 版本，无从回滚")
+            cur = pointer.resolve(ro, scope)
+            approval = cli_confirm(cfg, f"回滚 {scope}（当前 {cur['release_id']}）", cur["release_id"])
+            rw = db.open_release(settings)
+            try:
+                r = rrun.rollback(settings, con, rw, scope, approval, cfg, args.reason)
+            finally:
+                rw.close()
+            text = (f"{r['status']}：{r.get('from_release')} → {r.get('to_release') or '无（已冻结并停用入场）'}。"
+                    "已有仓位保留原版本，按原止损和截止规则完成。")
+        elif cmd == "freeze":
+            cause = args.cause.upper()
+            if args.unfreeze:
+                approval = None
+                if cause in cfg.freeze["human_release"]:
+                    approval = cli_confirm(cfg, f"解除 {scope} 的 {cause} 冻结", str(scope))
+                r = rfreeze.unfreeze(con, scope, cause, args.reason or "MANUAL", cfg, approval=approval)
+                text = f"{r['status']}：{scope} {cause}（{r['risk_domain']}）"
+            elif args.status:
+                r = rfreeze.status(con, scope)
+                text = f"{scope}：" + ("、".join(f"{x['cause']}@{x['risk_domain']}" for x in r["causes"]) or "没有冻结") + \
+                    (f"；数据阻止 {len(r['data_blocked'])} 个风险域" if r["data_blocked"] else "")
+            else:
+                import getpass
+                r = rfreeze.freeze(con, scope, cause, args.reason, getpass.getuser(), cancel_working=args.cancel_working)
+                text = (f"{r['status']}：{scope} 的新入场已停（{cause}，{r['risk_domain']}）"
+                        + (f"，撤掉未成交单 {len(r['cancelled_orders'])} 张" if r["cancelled_orders"] else "") + "。")
+        else:
+            r = rmon.run(settings, con, ro, scope, cfg, risk_cfg=risk_cfg, as_of_day=args.day)
+            if r["status"] in ("NO_ACTIVE", "NO_MANIFEST"):
+                text = f"{scope}：没有 active 版本，没有可监控的对象。"
+            else:
+                m = r["metrics"]
+                text = (f"{scope} {r['release_id']} 截至 {r.get('as_of_day', '')}：{r['status']}；激活以来 {m['valid_days']} 个有效日、"
+                        f"{m['trades']} 笔" + (f"；触发 {'、'.join(b['trigger'] for b in r['breaches'])}，{r['action']}" if r["breaches"] else ""))
+        _emit({"status": r.get("status", "OK"), **r} if isinstance(r, dict) else r, args.json, text)
+        return 0
+    except ReleaseError as e:
+        _emit({"status": "REFUSED", "reason": e.reason, "message": str(e)}, args.json, f"拒绝（{e.reason}）：{e}")
+        return 1
+    finally:
+        if ro is not None:
+            ro.close()
 
 
 def _registry(registry):
@@ -543,7 +691,8 @@ def _evaluate(args, settings, con, scope, registry) -> int:
                 r["manifest"] = guard.verify(settings, cfg) and "MATCH"
             except guard.GuardError as e:
                 r["manifest"] = e.reason
-            text = f"评测器摘要 {r['evaluator_sha256'][:16]}…　引擎摘要 {r['engine_sha256'][:16]}…　清单：{r['manifest']}"
+            text = (f"评测器摘要 {r['evaluator_sha256'][:16]}…　引擎摘要 {r['engine_sha256'][:16]}…　"
+                    f"发布服务摘要 {r['release_sha256'][:16]}…　清单：{r['manifest']}")
         else:
             r = ev.status(con, scope, load_research(settings.project_root))
             c = r["capsules"]

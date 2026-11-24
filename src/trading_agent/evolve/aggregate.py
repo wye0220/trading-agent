@@ -65,12 +65,16 @@ def window(settings: Settings, con: sqlite3.Connection, scope_text: str, run_id:
         " JOIN session_reviews r ON r.session_id = s.session_id WHERE s.status='SEALED' AND " + where
         + " ORDER BY s.trading_day DESC, s.session_id DESC", args).fetchall()
     cut = settings.dev_visible_through.isoformat() if settings.dev_visible_through else None
+    from ..release.shadow import reserved_window_start
+    hold = None if manual else reserved_window_start(con, scope_text)   # 进行中的前向保留窗口（阶段 9）
     used, excluded = [], Counter()
     for r in rows:
         kpi = json.loads(r["kpi_json"] or "{}")
         fixture = r["run_mode"] == "fixture" or bool((kpi.get("data") or {}).get("fixture"))
         if r["run_mode"] in SHADOW_MODES:
             excluded["SHADOW_WINDOW"] += 1
+        elif hold and r["trading_day"] >= hold:
+            excluded["FORWARD_HOLDOUT"] += 1                   # 结果解封前不进作者的聚合输入
         elif not manual and not fixture and (cut is None or r["trading_day"] > cut):
             excluded["AFTER_DEV_CUTOFF"] += 1                  # 截止日之后（或没设截止日）的真实数据不进作者输入
         else:
