@@ -1,4 +1,4 @@
-"""备用行情 tvfeed：只读 price-feed 的本地 JSON，记为降级来源。"""
+"""本地 TradingView 线 tvfeed：盘中主来源（2026-11-24 起），只读 price-feed 的本地 JSON；Webull 备用。"""
 import json
 from datetime import date, datetime
 
@@ -13,7 +13,7 @@ from trading_agent.release import manifest as RM
 D = date(2025, 11, 25)            # 放行首日
 CUT = date(2025, 11, 24)          # 截止日
 ROLL = date(2025, 12, 15)         # 2025-12 到期周的星期一：roll-v2 已切到 H2026，连续合约还是 Z2025
-CFG = {"source": "tvfeed", "symbols": {"MES1!": "ES"}, "primary_source": "webull"}
+CFG = {"source": "tvfeed", "symbols": {"MES1!": "ES"}, "primary_source": "tvfeed"}
 
 
 def iso_ny(t):
@@ -42,7 +42,7 @@ def run(e, feed, now):
     return tvfeed.collect(e.settings, e.con, now=now, feed_root=feed, cfg=CFG)
 
 
-def test_backup_bars_are_written_as_degraded_proxy(tenv, tmp_path):
+def test_local_bars_are_written_as_primary(tenv, tmp_path):
     feed = tmp_path / "feed"
     close = sessions.rth_bounds(D)[1]
     write_feed(feed, D, fetched=close + 60, extra=[close + 300])        # 最后一根取数时没走完
@@ -54,11 +54,11 @@ def test_backup_bars_are_written_as_degraded_proxy(tenv, tmp_path):
     assert tuple(row) == ("tvfeed", "ESZ2025", 0)
     td = tenv.con.execute("SELECT source, complete, degraded FROM trading_days WHERE instrument_root='ES' AND trading_day=?",
                           (D.isoformat(),)).fetchone()
-    assert tuple(td) == ("tvfeed", 1, 1)                                 # 选中备用来源的日子是降级日
+    assert tuple(td) == ("tvfeed", 1, 0)                                 # 主来源：不降级，是有效交易日
     assert run(tenv, feed, close + 180)["existing"] == 78                # 重复读取不重复写
 
 
-def test_primary_source_wins_when_present(tenv, tmp_path):
+def test_local_wins_over_webull(tenv, tmp_path):
     feed = tmp_path / "feed"
     close = sessions.rth_bounds(D)[1]
     write_feed(feed, D, fetched=close + 60)
@@ -67,7 +67,7 @@ def test_primary_source_wins_when_present(tenv, tmp_path):
     run(tenv, feed, close + 120)
     td = tenv.con.execute("SELECT source, degraded FROM trading_days WHERE instrument_root='ES' AND trading_day=?",
                           (D.isoformat(),)).fetchone()
-    assert tuple(td) == ("webull", 0)
+    assert tuple(td) == ("tvfeed", 0)
 
 
 def test_roll_week_backup_is_not_used(tmp_path, monkeypatch):
@@ -85,7 +85,7 @@ def test_roll_week_backup_is_not_used(tmp_path, monkeypatch):
         e.con.close()
 
 
-def test_degraded_days_do_not_count_for_paper_acceptance(tenv, tmp_path):
+def test_local_days_count_for_paper_acceptance(tenv, tmp_path):
     feed = tmp_path / "feed"
     close = sessions.rth_bounds(D)[1]
     write_feed(feed, D, fetched=close + 60)
@@ -104,7 +104,7 @@ def test_degraded_days_do_not_count_for_paper_acceptance(tenv, tmp_path):
                           "ESZ2025", "WAIT", "NOT_EVALUATED", "NONE", "{}", "{}",
                           json.dumps({"trading_day": D.isoformat(), "signal_bar_end_utc": s + 300})))
     tenv.con.commit()
-    assert RM.paper_run_days(tenv.con, tenv.scope) == []                 # 按时处理了，但当天来源是降级的备用线
+    assert RM.paper_run_days(tenv.con, tenv.scope) == [D.isoformat()]    # 本地线是主来源：按时处理的日子算数
 
 
 def test_tvfeed_is_read_only():
@@ -114,18 +114,34 @@ def test_tvfeed_is_read_only():
 
 
 def test_tick_warns_when_backup_in_use(tenv, tmp_path, monkeypatch):
+    """本地线当天没有 RTH 线、引擎用了 Webull：记 WARN。"""
     import test_engine_runner as ER
     import test_ops as TO
     import test_release as TRL
     import test_research as TR
     from trading_agent.ops import tick as TK
     monkeypatch.setattr(tvfeed, "config", lambda root: CFG)
-    feed = tmp_path / "feed"
     t = sessions.rth_bounds(D)[0] + 3600
-    write_feed(feed, D, fetched=t)
-    run(tenv, feed, t)
+    rows = [r for r in H.rth_bars(D, fixture=False, source="webull", contract="ESZ2025")
+            if sessions.parse_utc(r["bar_start_utc"]) + 300 <= t]
+    for r in rows:
+        r["fetched_at_utc"] = sessions.iso(t)
+    H.write_csv(tenv.root / "webull.csv", rows)
+    tenv.ingest()
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", t) == (True, "本地线今天还没有 RTH 线")
     r = TK.run(tenv.settings, tenv.con, TO.OCFG, registry=TR.REG, release_cfg=TRL.CFG, now=t + 30, shadow=False,
                risk_cfg=ER.RISK, engine_cfg=ER.ENG)
     assert r["scopes"][0]["status"] == "SCANNED"
     kinds = [x[0] for x in tenv.con.execute("SELECT kind FROM alerts")]
-    assert "BACKUP_SOURCE_IN_USE" in kinds and "DATA_STALE" not in kinds
+    assert "BACKUP_SOURCE_IN_USE" in kinds
+
+
+def test_needs_fallback(tenv, tmp_path):
+    feed = tmp_path / "feed"
+    t = sessions.rth_bounds(D)[0] + 3600
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", t)[0]                 # 还没有本地线
+    write_feed(feed, D, fetched=t)
+    run(tenv, feed, t)
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", t + 60)[0] is False  # 本地线有了：不起 claude 会话
+    roll_t = sessions.rth_bounds(ROLL)[0] + 3600
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", roll_t) == (True, "到期周：不用本地线")

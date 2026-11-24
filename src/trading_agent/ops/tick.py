@@ -74,7 +74,7 @@ def run(settings: Settings, con: sqlite3.Connection, cfg: OpsConfig, *, registry
                 if plat is None:
                     # 主来源当天没有 RTH 线，引擎选了备用来源：选中它的日子记为降级日
                     state.alert(con, "WARN", "BACKUP_SOURCE_IN_USE",
-                                f"{scope} 主来源 {prim} 今天没有 RTH 线，正在用备用行情（tvfeed，当天记为降级日）",
+                                f"{scope} 主来源 {prim} 今天没有 RTH 线，正在用其他来源（见 trading_days.source）",
                                 scope=text, detail={"primary": prim}, now=now)
             wm = state.get(con, f"watermark:{text}") or {}
             if latest is None or latest <= (wm.get("bar_end_utc") or 0):

@@ -6,14 +6,13 @@ from_day:
   ES: 2026-11-24
   NQ: 2026-11-24
 
-# 备用行情（2026-11-24 用户决定）：~/trading-desk 的 price-feed 流水线存在本地的 TradingView 5 分钟线，只读。
-# 主来源仍是 Webull；Webull 当天没有数据时才会选中它。选中它的交易日来源质量记为 proxy（降级），
-# 不计入纸面运行验收、影子窗口和监控。到期周（roll-v2 已切月、连续合约还没切）的备用线不用。
-backup:
+# 本地 TradingView 线（2026-11-24 用户决定为盘中主来源，Webull 备用）：~/trading-desk 的 price-feed 流水线
+# 存在本地的 5 分钟线，只读。MES1!／MNQ1! 当作 ES／NQ 的行情，合约按 roll-v2 记实际合约，不降级。
+# 到期周（roll-v2 已切月、连续合约还没切）不写本地线，当天由 Webull 接管。
+tvfeed:
   source: tvfeed
   feed_root: /Users/wenye/trading-desk/state/price-feed
   symbols:
     "MES1!": ES
     "MNQ1!": NQ
-  primary_source: webull
-
+  primary_source: tvfeed

@@ -150,16 +150,17 @@ instrument_root,contract_id,timeframe,bar_start_utc,open,high,low,close,volume,s
 
 导入摘要里的 `live_after_cutoff` 是这次放行的条数。
 
-### 备用行情 tvfeed（2026-11-24 用户决定）
+### 盘中主来源 tvfeed（2026-11-24 用户决定）
 
-主来源是 Webull。备用来源是 `~/trading-desk` 的 price-feed 流水线每 5 分钟从 TradingView 读一次、存在本地的 5 分钟线（`state/price-feed/<美东日期>/`，保留 10 天）。
+盘中行情以本地 TradingView 线为主，Webull 为备用。本地线是 `~/trading-desk` 的 price-feed 流水线每 5 分钟从 TradingView 读一次、存在本地的 5 分钟线（`state/price-feed/<美东日期>/`，保留 10 天）。
 
-- **只读**：只读本地 JSON，不连 TradingView、Webull 或任何行情 API，不往那个目录写东西。`collect --from-tvfeed` 把它写成数据合同 CSV（`<data_root>/tvfeed/<根代码>/<合约>/<交易日>.csv`，来源 `tvfeed`，取数时刻用文件里的 `fetched_at`），再导入。盘中脚本每轮在 Webull 取数之后读一次。
-- **品种**：`MES1!` 代表 ES，`MNQ1!` 代表 NQ。点位一致，但不是实际 ES 合约，所以选中它的交易日来源质量记为 `proxy`（降级）：不是有效交易日，不计入纸面运行验收、影子窗口和发布后监控；扫描照常进行。
-- **只在主来源没有数据时选中**：`source_priority` 是 `databento, webull, tvfeed`。引擎每天只按优先级选一个来源，一旦当天 Webull 有了 RTH 线就一直用 Webull（阶段 3 冻结的行为）。所以备用线接得住 **Webull 一整天没有数据**（比如开盘前 Claude 登录失效）；**午盘中途** Webull 断了，系统照样报断流，不会切过去。在用备用线时节拍记 WARN `BACKUP_SOURCE_IN_USE`。
-- **到期周不用**：TradingView 的连续合约到期日前后才切月，而 roll-v2 在到期周的星期一就切到下一季；到期周里两边可能不是同一个合约，这几天的备用线一律不写。
+- **只读**：只读本地 JSON，不连 TradingView、Webull 或任何行情 API，不往那个目录写东西。`collect --from-tvfeed` 把它写成数据合同 CSV（`<data_root>/tvfeed/<根代码>/<合约>/<交易日>.csv`，来源 `tvfeed`，取数时刻用文件里的 `fetched_at`），再导入。
+- **品种**：`MES1!` 代表 ES，`MNQ1!` 代表 NQ，TradingView 连续合约，点位与 ES／NQ 一致。按用户决定当作 ES／NQ 的行情：合约标识按 roll-v2 记实际合约，来源质量不降级。微型合约与标准合约之间偶有一两个 tick 的差异，纸面账本按本地线的价格记。
+- **优先级**：`source_priority` 是 `databento, tvfeed, webull`。引擎每天只按优先级选一个来源，一旦当天本地线有了 RTH 线就一直用它（阶段 3 冻结的行为）。
+- **Webull 什么时候用**：盘中脚本只在本地线当天没有任何 RTH 线时（price-feed 没跑，或到期周）才起 `claude -p` 会话取 Webull（`collect --need-webull` 判断）；那天节拍记 WARN `BACKUP_SOURCE_IN_USE`。本地线**午盘中途**断了不会切到 Webull，照样报断流。17:12 的 Webull 每日全量采集照常，作为当天的完整记录。
+- **到期周不用本地线**：TradingView 的连续合约到期日前后才切月，而 roll-v2 在到期周的星期一就切到下一季；到期周里两边可能不是同一个合约，这几天的本地线一律不写，由 Webull 实际合约接管。
 - **封存期不读**：只读实时行情放行首日（2026-11-24）及之后的日期目录，只写放行日的 K 线。
-- **只用已收线的**：收线时刻晚于文件取数时刻的那根不写。
+- **只用已收线的**：收线时刻晚于文件取数时刻的那根不写。盘中脚本先等 price-feed 这一轮的收据（`round-<HHMM>.json`，每 2 秒查一次，最多 90 秒，整点 180 秒），等不到就用上一轮的数据并记日志。
 
 ## 派生数据与因果可见性
 

@@ -11,7 +11,7 @@
 | 时刻（ET） | 动作 | 等价的手工命令 | 样例 |
 | --- | --- | --- | --- |
 | 09:25 | 启动常驻 watch，16:05 退出 | `python -m trading_agent watch` | `com.wenye.trading-agent-watch`（已安装） |
-| 每 5 分钟准点（交易日 RTH 开盘到收盘后 10 分钟） | 盘中取数，然后节拍 | `ops/launchd/run-intraday.sh`，或只跑 `python -m trading_agent ops --tick` | `com.wenye.trading-agent-intraday`（已安装） |
+| 每 5 分钟准点（交易日 RTH 开盘到收盘后 10 分钟） | 读本地线（必要时取 Webull），然后节拍 | `ops/launchd/run-intraday.sh`，或只跑 `python -m trading_agent ops --tick` | `com.wenye.trading-agent-intraday`（已安装） |
 | 每 2 分钟 | 检查 watch 心跳 | `python -m trading_agent ops --watch-check` | `com.wenye.trading-agent-watch-check`（已安装） |
 | 每 30 秒 | 拉取 Telegram 控制通道 | `python -m trading_agent control --poll` | `com.wenye.trading-agent-control`（已安装） |
 | 17:45（每日采集之后） | 盘后流水 | `python -m trading_agent ops --daily` | `com.wenye.trading-agent-daily`（已安装） |
@@ -40,9 +40,9 @@ launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily      # 停用
 
 **断流和迟到**：盘中应已到却没到的 5 分钟线（收线后再等 90 秒）超过 2 根记 CRITICAL `DATA_STALE`，1–2 根记 WARN `LATE_BAR`。
 
-**备用行情**：每轮在 Webull 取数之后读一次 trading-desk price-feed 的本地 TradingView 线（`collect --from-tvfeed`，只读）。Webull 当天一整天没有数据时引擎才会选它，那天记为降级日；在用时节拍记 WARN `BACKUP_SOURCE_IN_USE`。午盘中途 Webull 断了不会切过去。见 `docs/data-contract.md`。
+**盘中数据来源**（2026-11-24 起）：每轮先等 price-feed 这一轮的收据，读本地 TradingView 线（`collect --from-tvfeed`，只读，主来源）；只有本地线当天没有任何 RTH 线（price-feed 没跑，或到期周）才起 `claude -p` 会话取 Webull（备用），那天记 WARN `BACKUP_SOURCE_IN_USE`。见 `docs/data-contract.md`。
 
-**现状**：盘中采集脚本 `run-intraday.sh` 每 5 分钟起一个 `claude -p` 会话，调 Webull 连接器取数。它只允许 `get_futures_bars` 和 `collect --from-mcp` 两个工具。开销和偶发失败要你权衡；失败时节拍照样运行，只会多出迟到告警，不会产生错误信号。不装它，节拍在真实环境里要到收盘后才看得到当天的线。
+**开销**：平时不起 `claude -p` 会话；只有用 Webull 备用时，每 5 分钟一个。取不到数时节拍照样运行，只会多出迟到告警，不会产生错误信号。
 
 ## 3. 盘后与周度
 
@@ -168,7 +168,7 @@ python -m trading_agent ops --explain              # 重新处理
 | 盘后 17:45 | 已安装 | 11-23 是封存日，试跑结果 `SEALED_DAY`；人工轨 `NO_ACTIVITY` |
 | 周度 18:05 | 已安装 | 只有每周最后一个交易日做事 |
 | watch（09:25–16:05）、watch 检查（每 2 分钟） | 已安装（2026-11-23） | Alpaca 模拟盘只读密钥在 `~/trading-agent-data/secrets/alpaca.env`；实测 `watch --once` 状态 OK |
-| 盘中采集与节拍 | 已安装（2026-11-23） | 每小时 :00、:05 … :55 准点触发，等 20 秒后取数并跑节拍；按交易日历只在 RTH 开盘到收盘后 10 分钟内做事（休市日、提前收盘之后不起会话）。每次一个 `claude -p` 会话；日志 `~/trading-agent-data/logs/ops/<日期>-intraday.log` |
+| 盘中采集与节拍 | 已安装（2026-11-23） | 每小时 :00、:05 … :55 准点触发，等本地这一轮的数据就位后读本地线，必要时取 Webull，再跑节拍；按交易日历只在 RTH 开盘到收盘后 10 分钟内做事。平时不起 `claude -p` 会话；日志 `~/trading-agent-data/logs/ops/<日期>-intraday.log` |
 | 控制通道（Telegram） | 已安装（2026-11-24） | 用告警的同一个机器人和群；绑定了你的用户 ID；每 30 秒拉一次。本机命令行通道仍没有绑定用户 |
 | 模型解释 | 没装 | 积压 1362 个请求，等你决定 |
 

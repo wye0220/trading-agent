@@ -1,12 +1,13 @@
-"""备用行情：读 ~/trading-desk 的 price-feed 流水线存在本地的 TradingView 5 分钟线（2026-11-24 用户决定）。
+"""盘中主来源：读 ~/trading-desk 的 price-feed 流水线存在本地的 TradingView 5 分钟线。
+
+2026-11-24 用户决定：本地数据为主、Webull 为备用（此前是 Webull 为主）。
 
 只读本地 JSON，不连 TradingView、Webull 或任何行情 API，也不往那个目录写东西。
 
-- 品种：MES1!（代表 ES）、MNQ1!（代表 NQ），TradingView 连续合约。点位与 ES／NQ 一致，但不是实际 ES 合约，
-  所以写进运行库时来源记为 tvfeed，这一天的来源质量记为 proxy（降级）：选中它的交易日不是有效交易日，
-  不计入纸面运行验收、影子窗口和发布后监控；扫描照常进行，盘中不至于停摆。
+- 品种：MES1!（代表 ES）、MNQ1!（代表 NQ），TradingView 连续合约，点位与 ES／NQ 一致。按用户决定当作 ES／NQ 的行情：
+  合约标识按 roll-v2 记实际合约，来源记为 tvfeed，来源质量不降级。
 - 换月：TradingView 的连续合约在到期日前后才切月，而系统按 roll-v2 在到期周的星期一就切到下一季。
-  到期周里两边可能不是同一个合约，这几天的备用线一律不用。
+  到期周里两边可能不是同一个合约，这几天不写本地线，当天由 Webull 接管。
 - 只放行晚于开发截止日、且在实时行情放行首日及之后的交易日（config/live_data.yaml）；之前的日子一律不读。
 - 只用收线时刻不晚于这份文件取数时刻的 K 线（没走完的最后一根不要）。
 """
@@ -24,7 +25,6 @@ from .collect import _append, _existing, _norm
 from .config import Settings
 
 SOURCE = "tvfeed"
-QUALITY = "proxy"
 TF, SIZE = "5m", 300
 
 
@@ -32,7 +32,7 @@ def config(project_root) -> dict:
     import yaml
     p = Path(project_root) / "config" / "live_data.yaml"
     raw = (yaml.safe_load(p.read_text(encoding="utf-8")) or {}) if p.is_file() else {}
-    return raw.get("backup") or {}
+    return raw.get("tvfeed") or raw.get("backup") or {}
 
 
 def csv_path(settings: Settings, root: str, cid: str, day: str) -> Path:
@@ -108,7 +108,6 @@ def collect(settings: Settings, con: sqlite3.Connection, *, now: int | None = No
     include_eth = settings.collect.get("include_eth", True)
     per_file: dict[Path, list[list[str]]] = {}
     cache: dict[Path, dict] = {}
-    quality_days: set[str] = set()
     for (root, s), (b, fetched) in sorted(merged.items()):
         d, sess = sessions.classify(s)
         if d is None or (sess == "ETH" and not include_eth):
@@ -134,17 +133,33 @@ def collect(settings: Settings, con: sqlite3.Connection, *, now: int | None = No
             continue
         stats["revisions" if prev is not None else "new_bars"] += 1
         cache[path][k] = content
-        quality_days.add(ds)
         per_file.setdefault(path, []).append([root, cid, TF, sessions.iso(s), *content, SOURCE,
                                               sessions.iso(s + SIZE), sessions.iso(fetched)])
     for path, rows in sorted(per_file.items()):
         _append(path, rows)
-    with con:
-        con.executemany("INSERT OR REPLACE INTO day_quality VALUES (?,?,?)",
-                        [(SOURCE, d, QUALITY) for d in sorted(quality_days)])
     written = sum(len(v) for v in per_file.values())
     out = {"ok": True, "source": SOURCE, **stats, "rows_written": written,
            "files": [str(p.relative_to(settings.data_root)) for p in sorted(per_file)]}
     if ingest and written:
         out["ingest"] = run_ingest(settings, con, run_id=new_run_id("tvf"), kind="collect", write_report=False)
     return out
+
+
+def needs_fallback(settings: Settings, con: sqlite3.Connection, root: str, now: int | None = None) -> tuple[bool, str]:
+    """此刻要不要取 Webull：本地线当天没有任何 RTH 线（price-feed 没跑，或到期周不用本地线）才需要。
+
+    引擎每天只按优先级选一个来源：当天本地线一旦有了 RTH 线，就一直用它，这时取 Webull 也用不上。
+    """
+    from .scan import _session_for
+    now = int(time.time()) if now is None else now
+    day, in_rth = _session_for(now)
+    inst = settings.instrument(root)
+    cid = contracts.active_contract(inst, day, settings.roll_rules)
+    if front_contract(inst, day) != cid:
+        return True, "到期周：不用本地线"
+    n = con.execute("SELECT COUNT(*) FROM bars WHERE source=? AND contract_id=? AND trading_day=? AND session_type='RTH'",
+                    (SOURCE, cid, day.isoformat())).fetchone()[0]
+    if n == 0 and in_rth:
+        return True, "本地线今天还没有 RTH 线"
+    return False, f"本地线今天已有 {n} 根 RTH 线"
+

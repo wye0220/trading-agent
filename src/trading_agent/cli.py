@@ -65,7 +65,9 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--check-day", metavar="YYYY-MM-DD",
                             help="只检查该交易日 ES、NQ 的已存文件是否覆盖了全部 RTH 5 分钟线（不取数、不写数据）")
             sp.add_argument("--from-tvfeed", action="store_true",
-                            help="读 trading-desk price-feed 存在本地的 TradingView 5 分钟线作备用（只读，来源 tvfeed，记为降级）")
+                            help="读 trading-desk price-feed 存在本地的 TradingView 5 分钟线（盘中主来源，只读，来源 tvfeed）")
+            sp.add_argument("--need-webull", action="store_true",
+                            help="此刻要不要取 Webull 备用线：要则退出码 0，不要则 1（盘中脚本用）")
             sp.add_argument("--mcp-request", action="store_true",
                             help="只打印此刻该向 Webull MCP 连接器请求的合约代码和起始时刻（不取数、不写数据）")
         if name == "scan":
@@ -338,13 +340,18 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
                             + ("" if r["ok"] else "  ← 不完整") for r in results))
             return 0 if ok else 1
 
+        if args.command == "collect" and args.need_webull:
+            from . import tvfeed
+            need, why = tvfeed.needs_fallback(settings, con, scope.instrument_root)
+            _emit({"need_webull": need, "reason": why}, args.json, f"{'要' if need else '不要'}取 Webull：{why}")
+            return 0 if need else 1
         if args.command == "collect" and args.from_tvfeed:
             from . import tvfeed
             r = tvfeed.collect(settings, con)
             if not r["ok"]:
-                _emit(r, args.json, f"备用行情没有配置或目录不存在：{r.get('feed_root')}")
+                _emit(r, args.json, f"本地 TradingView 线没有配置或目录不存在：{r.get('feed_root')}")
                 return 1
-            text = (f"备用行情（tvfeed）：读 {r['files_read']} 个文件，新 {r['new_bars']} 根、修订 {r['revisions']} 根，"
+            text = (f"本地 TradingView 线（tvfeed）：读 {r['files_read']} 个文件，新 {r['new_bars']} 根、修订 {r['revisions']} 根，"
                     f"已有 {r['existing']}；没走完 {r['unclosed']}、放行首日之前 {r['not_live']}、到期周 {r['roll_window']} 根没写。")
             _emit(r, args.json, text)
             return 0
