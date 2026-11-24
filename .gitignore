@@ -21,3 +21,4 @@ reports/*
 # 生成的候选文件（台账在运行库里）
 candidates/*
 !candidates/.gitkeep
+data/
