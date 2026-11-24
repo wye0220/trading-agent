@@ -388,3 +388,60 @@ def test_ops_scripts_are_samples_and_read_only():
     assert new and all(n.endswith(".plist.example") for n in new)               # 只有样例，没有可直接加载的 plist
     explain = (H.PROJECT / "src" / "trading_agent" / "ops" / "explain.py").read_text(encoding="utf-8")
     assert '"--tools", ""' in explain                                            # 模型调用不给任何工具
+
+
+def test_daily_catches_up_paper_run_without_intraday_ticks(env):
+    """没有盘中节拍时，盘后先补扫当天：纸面运行有完整记录，但补扫的信号不挂单、不算按时处理。"""
+    from trading_agent.release import manifest as RM
+    ER.load(env, ER.scripted_day())
+    close = sessions.rth_bounds(D1)[1]
+    r = DY.run_daily(env.settings, env.con, OCFG, registry=TR.REG, release_cfg=TRL.CFG, manual_cfg=M.MAN,
+                     now=close + 90 * 60, **KW)
+    s = r["scopes"][0]
+    assert s["catch_up"] == "OK" and s["status"] == "DONE" and s["ledger"] == "PASS"
+    run = paper_run_id(env.scope)
+    assert env.con.execute("SELECT COUNT(*) FROM scan_events WHERE run_id=?", (run,)).fetchone()[0] > 0
+    assert env.con.execute("SELECT COUNT(*) FROM paper_orders WHERE run_id=?", (run,)).fetchone()[0] == 0
+    assert RM.paper_run_days(env.con, env.scope) == []
+
+
+def test_daily_skips_sealed_days_quietly(tmp_path, monkeypatch):
+    from conftest import Env
+    from trading_agent import live_window as LW
+    nxt = sessions.next_trading_day(D1)
+    monkeypatch.setattr(LW, "load", lambda root: LW.parse({"sources": ["webull"], "from_day": {"ES": nxt.isoformat()}}))
+    e = Env(tmp_path, dev_visible_through=sessions.prev_trading_day(D1))
+    try:
+        r = DY.run_daily(e.settings, e.con, OCFG, registry=TR.REG, release_cfg=TRL.CFG, manual_cfg=M.MAN,
+                         day=D1.isoformat(), now=sessions.rth_bounds(D1)[1] + 3600, **KW)
+        assert r["scopes"][0]["status"] == "SEALED_DAY"
+        assert e.con.execute("SELECT COUNT(*) FROM alerts WHERE kind='INCOMPLETE_DAY'").fetchone()[0] == 0
+    finally:
+        e.con.close()
+
+
+def test_daily_seals_and_reviews_live_window_day(tmp_path, monkeypatch):
+    """放行的实时行情日（截止日之后）可以封存和复盘；聚合照旧把它们排除在外。"""
+    from conftest import Env
+    from trading_agent import live_window as LW
+    monkeypatch.setattr(LW, "load", lambda root: LW.parse({"sources": ["webull"], "from_day": {"ES": D1.isoformat()}}))
+    e = Env(tmp_path, dev_visible_through=sessions.prev_trading_day(D1))
+    try:
+        rows = ER.scripted_day(source="webull")
+        for r in rows:
+            r["fixture"] = False
+        H.write_csv(e.root / "live.csv", rows)
+        e.ingest()
+        assert e.con.execute("SELECT COUNT(*) FROM bars WHERE source='webull' AND fixture=0").fetchone()[0] > 0
+        r = DY.run_daily(e.settings, e.con, OCFG, registry=TR.REG, release_cfg=TRL.CFG, manual_cfg=M.MAN,
+                         now=sessions.rth_bounds(D1)[1] + 3600, **KW)
+        s = r["scopes"][0]
+        assert s["status"] == "DONE" and s["review"] not in ("NO_ACTIVITY",) and not str(s["review"]).startswith("ERROR"), s
+        assert r["manual_review"] == "NO_ACTIVITY"
+        sid = f"{paper_run_id(e.scope)}:{D1}"
+        assert e.con.execute("SELECT status FROM sessions WHERE session_id=?", (sid,)).fetchone()[0] == "SEALED"
+        from trading_agent.evolve.aggregate import window
+        w = window(e.settings, e.con, str(e.scope), paper_run_id(e.scope), 0)
+        assert w["sessions"] == [] and w["excluded"].get("AFTER_DEV_CUTOFF") == 1
+    finally:
+        e.con.close()
