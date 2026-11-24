@@ -199,15 +199,41 @@ uv run python -m trading_agent evaluate --accept-digests         # 把摘要写�
 
 另外，封存行情（截止日之后的 Databento 原始文件）现在还在数据根目录下，作者身份可读。
 
-**要你做的设置**（需要管理员权限，我没有执行）：
+**设置步骤**（2026-11-24 起；管理员部分由你本人运行）：
 
-1. 建一个独立的系统用户（例如 `trading-eval`）。
-2. 把 `~/trading-holdout` 的属主改成它，权限 `700`。
-3. 把含截止日之后数据的原始行情文件移到 `~/trading-holdout/data/`，在 `config/evaluation.yaml` 填 `isolation.sealed_data_root`。运行库只留截止日之前的数据（已经如此）。
-4. 让评测身份能写运行库里的登记和摘要表（例如同组加组写权限）。
-5. 用评测身份运行 `evaluate --accept-digests`，再用作者身份运行 `evaluate --isolation-check` 确认通过。
+准备工作已经做了（不需要管理员权限）：
 
-第 3 步有一个要先想清楚的问题：每日采集的新数据也在数据根目录下，它们晚于截止日，同样属于未来的保留集。
+- 原始 Databento 文件 `glbx-mdp3-20190905-20260904.ohlcv-1m.dbn` 前后混着截止日两侧的数据。截止日（含）之前的 2,623,074 根 1 分钟线已抽出为 `~/trading-agent-data/databento/dev-extract/databento-ohlcv-1m-through-2024-12-31.csv`（`ops/isolation/extract_dev_bars.py`），导入核对与运行库完全一致（新增 0、新 revision 0、全部重复）。原文件因此可以整份交给评测身份（评测窗口前还要预热数据）。
+- `config/paths.yaml` 的 `holdout_root` 改为 `/Users/Shared/trading-holdout`（移出主目录：`/Users/Shared` 有粘滞位，作者删不了别人的目录）；`config/evaluation.yaml` 的 `sealed_data_root` 改为 `/Users/Shared/trading-holdout/data`；`.claude/settings.json` 加了对应的读取拒绝规则。
+- 评测身份写摘要清单时固定为 `644`：作者能读（发布批准要核对），不能改。
+
+**1. 管理员部分**（先试跑看会做什么，再正式运行）：
+
+```bash
+zsh ops/isolation/setup-isolation.sh --dry-run
+sudo zsh ops/isolation/setup-isolation.sh
+```
+
+它会：建隐藏的系统用户 `trading-eval`（不能登录）；建组 `trading-agent`（你和 `trading-eval`），运行库目录和 `reports/evaluations` 对这个组可写；建 `/Users/Shared/trading-holdout`（目录 `711`，`protected/` `755`，其余只有 `trading-eval` 能读）；把两批 Databento 原始文件和 2026-11-23（含）之前的 Webull 封存日移进 `data/`（2026-11-24 起放行的 Webull 实时行情留在原处）；旧的 `~/trading-holdout` 并入 `legacy/`；新位置如果已存在又不属于评测身份，就整个改名为 `trading-holdout-stale-<时间>` 留存、不信任。
+
+**2. 重新登录**（组成员身份要重新登录才生效）。
+
+**3. 评测身份写摘要清单**（sudo 会要你的密码，代理跑不了这一步）：
+
+```bash
+zsh ops/isolation/as-evaluator.sh --accept-digests
+```
+
+**4. 作者身份验收**：
+
+```bash
+uv run python -m trading_agent evaluate --isolation-check   # 四条路径都应是"挡住"，结论 PASS
+uv run python -m trading_agent evaluate --digests           # 摘要与清单一致
+```
+
+之后评测真实窗口一律用 `zsh ops/isolation/as-evaluator.sh <evaluate 的参数>`。评测器或发布服务的代码改动之后，要你 review，再用第 3 步重新签收。
+
+**边界**：你的账户是管理员，用 `sudo` 能读任何东西；隔离挡住的是不经 `sudo` 的进程，包括代理（Claude 没有你的密码）和误操作。
 
 ## 候选状态
 

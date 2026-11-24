@@ -36,4 +36,4 @@ synthetic_regression:
 
 isolation:
   author_users: [wenye]            # 这些系统用户是候选作者：不能评测真实窗口，也不能写摘要清单
-  sealed_data_root: null           # 封存行情的位置；空 = 数据根目录（隔离还没做的状态）
+  sealed_data_root: /Users/Shared/trading-holdout/data   # 封存行情（截止日之后的原始文件），只有评测身份能读

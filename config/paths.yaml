@@ -6,7 +6,7 @@ data_root: ~/trading-agent-data
 release_db: releases/release-state.sqlite
 
 # 保留集（含历史盲测胶囊）：只登记路径，必须在项目之外。非评测身份的代码不得读取。
-holdout_root: ~/trading-holdout
+holdout_root: /Users/Shared/trading-holdout   # 2026-11-24：移出主目录（ops/isolation/setup-isolation.sh），评测身份 trading-eval 所有
 
 # 没有到达时刻的来源（Databento 历史文件）：available_at = 收盘 + 这个延迟。实验预设。
 available_at_delay_seconds: 5
