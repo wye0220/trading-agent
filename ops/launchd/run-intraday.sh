@@ -27,4 +27,6 @@ if [[ -n "$REQ" ]]; then
     "Bash(uv run python -m trading_agent collect --from-mcp:*)" --model sonnet </dev/null >>"$LOG" 2>&1
   echo "[$(date '+%F %T')] claude 退出码 $?" >>"$LOG"
 fi
+# 备用行情：trading-desk price-feed 存在本地的 TradingView 线（只读，来源 tvfeed）。Webull 当天没有数据时引擎才会选它
+"$UV" run python -m trading_agent collect --from-tvfeed >>"$LOG" 2>&1 || echo "[$(date '+%F %T')] 备用行情读取失败" >>"$LOG"
 exec "$PROJECT/ops/launchd/run-ops.sh" tick

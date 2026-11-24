@@ -64,6 +64,8 @@ def build_parser() -> argparse.ArgumentParser:
             sp.add_argument("--fetched-at", metavar="ISO8601", help="该文件的取数时刻（UTC）。缺省用文件的修改时间")
             sp.add_argument("--check-day", metavar="YYYY-MM-DD",
                             help="只检查该交易日 ES、NQ 的已存文件是否覆盖了全部 RTH 5 分钟线（不取数、不写数据）")
+            sp.add_argument("--from-tvfeed", action="store_true",
+                            help="读 trading-desk price-feed 存在本地的 TradingView 5 分钟线作备用（只读，来源 tvfeed，记为降级）")
             sp.add_argument("--mcp-request", action="store_true",
                             help="只打印此刻该向 Webull MCP 连接器请求的合约代码和起始时刻（不取数、不写数据）")
         if name == "scan":
@@ -336,6 +338,16 @@ def main(argv: list[str] | None = None, *, settings=None, adapter=None, registry
                             + ("" if r["ok"] else "  ← 不完整") for r in results))
             return 0 if ok else 1
 
+        if args.command == "collect" and args.from_tvfeed:
+            from . import tvfeed
+            r = tvfeed.collect(settings, con)
+            if not r["ok"]:
+                _emit(r, args.json, f"备用行情没有配置或目录不存在：{r.get('feed_root')}")
+                return 1
+            text = (f"备用行情（tvfeed）：读 {r['files_read']} 个文件，新 {r['new_bars']} 根、修订 {r['revisions']} 根，"
+                    f"已有 {r['existing']}；没走完 {r['unclosed']}、放行首日之前 {r['not_live']}、到期周 {r['roll_window']} 根没写。")
+            _emit(r, args.json, text)
+            return 0
         if args.command == "collect" and args.mcp_request:
             import time as _time
 

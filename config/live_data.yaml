@@ -1,7 +1,19 @@
 # 截止日之后的实时行情放行（2026-11-23 用户决定）。
 # 放行的 K 线进运行库，只供常驻纸面运行、影子和发布后监控使用；研究切分、基线、聚合和评测照旧看不到它们。
 # 首日必须晚于任何已登记封存的交易日（现在是 2026-11-23），否则这个品种不放行。
-sources: [webull]                 # 只放行这些来源；同一天的其他来源（如 Databento 历史文件）照旧封存
+sources: [webull, tvfeed]         # 只放行这些来源；同一天的其他来源（如 Databento 历史文件）照旧封存
 from_day:
   ES: 2026-11-24
   NQ: 2026-11-24
+
+# 备用行情（2026-11-24 用户决定）：~/trading-desk 的 price-feed 流水线存在本地的 TradingView 5 分钟线，只读。
+# 主来源仍是 Webull；Webull 当天没有数据时才会选中它。选中它的交易日来源质量记为 proxy（降级），
+# 不计入纸面运行验收、影子窗口和监控。到期周（roll-v2 已切月、连续合约还没切）的备用线不用。
+backup:
+  source: tvfeed
+  feed_root: /Users/wenye/trading-desk/state/price-feed
+  symbols:
+    "MES1!": ES
+    "MNQ1!": NQ
+  primary_source: webull
+
