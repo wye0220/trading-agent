@@ -352,6 +352,12 @@ def test_manual_only_review_needs_no_strategy_run_or_market_data(env, capsys):
         S.seal_manual(env.settings, env.con, MH.ACCT, D1, MH.MAN, now_utc=H.et(D1, 15, 0))
     assert e.value.code == "SESSION_IN_PROGRESS"                         # 交易日还没结束
     with pytest.raises(S.SealError) as e:
+        S.seal_manual(env.settings, env.con, MH.ACCT, D1, MH.MAN, now_utc=H.et(D1, 16, 59))
+    assert e.value.code == "SESSION_IN_PROGRESS"                         # Globex 17:00 才收
+    with pytest.raises(S.SealError) as e:
+        S.seal_manual(env.settings, env.con, MH.ACCT, D2, MH.MAN, now_utc=H.et(D2, 17, 45))
+    assert e.value.code == "NO_ACTIVITY"                                 # 17:45 盘后任务时已可封存
+    with pytest.raises(S.SealError) as e:
         S.seal_manual(env.settings, env.con, MH.ACCT, D2, MH.MAN, now_utc=H.et(D2, 23, 0))
     assert e.value.code == "NO_ACTIVITY"
     r = B.run(env.settings, env.con, None, None, D1.isoformat(), account_id=MH.ACCT, seal_first=True,

@@ -127,7 +127,7 @@ def manual_session_id(account_id: str, trading_day: str) -> str:
 def seal_manual(settings: Settings, con: sqlite3.Connection, account_id: str, day: date, manual_cfg,
                 now_utc: int | None = None) -> dict:
     """封存一个账户一个交易日的人工轨 session。它只含你自己的计划、成交和提醒，不含任何行情，
-    所以不受开发可见截止日的限制。交易日结束之后才能封存。"""
+    所以不受开发可见截止日的限制。当日 Globex 时段结束（17:00 ET）之后才能封存。"""
     from ..manual import discipline
     ds = day.isoformat()
     sid = manual_session_id(account_id, ds)
@@ -137,8 +137,10 @@ def seal_manual(settings: Settings, con: sqlite3.Connection, account_id: str, da
     now = int(time.time()) if now_utc is None else now_utc
     if not sessions.is_trading_day(day):
         raise SealError("NOT_TRADING_DAY", f"{ds} 不是交易日")
-    if sessions.trading_day_at(now) <= day:
-        raise SealError("SESSION_IN_PROGRESS", f"{ds} 这个交易日还没有结束")
+    # Globex 时段到当日 17:00 ET 结束（17:00–18:00 是维护时段）。盘后任务 17:45 运行，不能等到 18:00 的交易日分界。
+    # 指标只统计到 RTH 收盘，所以 17:00 之后封存与 18:00 之后封存内容相同。
+    if now < sessions.eth_bounds(day)[1]:
+        raise SealError("SESSION_IN_PROGRESS", f"{ds} 这个交易日还没有结束（17:00 ET 之后才能封存）")
     k = discipline.session_kpis(con, manual_cfg, account_id, ds, sessions.rth_bounds(day)[1])
     if not k["opens"] and not k["closes"] and not k["alerts"]:
         raise SealError("NO_ACTIVITY", f"账户 {account_id} 在 {ds} 没有成交，也没有提醒")
