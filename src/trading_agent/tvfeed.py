@@ -149,10 +149,13 @@ def needs_fallback(settings: Settings, con: sqlite3.Connection, root: str, now: 
     """此刻要不要取 Webull：本地线当天没有任何 RTH 线（price-feed 没跑，或到期周不用本地线）才需要。
 
     引擎每天只按优先级选一个来源：当天本地线一旦有了 RTH 线，就一直用它，这时取 Webull 也用不上。
+    第一根 RTH 线收线之前（09:30 那一轮）谁都还没有 RTH 线，不算缺线，不取。
     """
     from .scan import _session_for
     now = int(time.time()) if now is None else now
     day, in_rth = _session_for(now)
+    if in_rth and now < sessions.rth_bounds(day)[0] + SIZE:
+        return False, "第一根 RTH 线还没收线"
     inst = settings.instrument(root)
     cid = contracts.active_contract(inst, day, settings.roll_rules)
     if front_contract(inst, day) != cid:

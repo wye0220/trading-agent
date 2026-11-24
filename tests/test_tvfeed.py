@@ -151,6 +151,10 @@ def test_needs_fallback(tenv, tmp_path):
     feed = tmp_path / "feed"
     t = sessions.rth_bounds(D)[0] + 3600
     assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", t)[0]                 # 还没有本地线
+    o = sessions.rth_bounds(D)[0]
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", o + 57) == (False, "第一根 RTH 线还没收线")  # 09:30 那一轮
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", o + 300 + 60)[0]      # 09:35 那一轮仍没有本地线：取
+    assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", sessions.rth_bounds(ROLL)[0] + 57)[0] is False
     write_feed(feed, D, fetched=t)
     run(tenv, feed, t)
     assert tvfeed.needs_fallback(tenv.settings, tenv.con, "ES", t + 60)[0] is False  # 本地线有了：不起 claude 会话
