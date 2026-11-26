@@ -266,12 +266,12 @@ def test_migration_0002_on_existing_db(tmp_path):
                 " VALUES ('x','ESZ2025','5m',1,1,'ES',301,'2025-11-25','RTH',1,2,0,1,5,306,1)")
     con.commit()
     assert "engine_runs" not in db.tables(con)
-    assert db.migrate(con, "runtime") == ["0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release", "0010_ops"]
+    assert db.migrate(con, "runtime") == ["0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release", "0010_ops", "0011_explain_model"]
     t = db.tables(con)
     assert {"engine_runs", "paper_positions", "paper_trades", "explanation_requests", "account_risk_days",
             "account_risk_events", "risk_reservations"} <= t
     assert con.execute("SELECT COUNT(*) FROM bars").fetchone()[0] == 1
-    assert db.applied_migrations(con) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release", "0010_ops"]
+    assert db.applied_migrations(con) == ["0001_initial", "0002_engine", "0003_manual", "0004_research", "0005_review", "0006_evolve", "0007_memory", "0008_evaluation", "0009_release", "0010_ops", "0011_explain_model"]
     assert {"plan_events", "discipline_events", "watch_state"} <= db.tables(con)
     cols = {r[1] for r in con.execute("PRAGMA table_info(paper_orders)")}
     assert {"armed_at_utc", "expires_at_utc", "signal_bar_end_utc", "trigger_ticks", "limit_ticks", "stop_ticks",

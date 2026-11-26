@@ -107,7 +107,7 @@ launchctl bootout gui/$(id -u)/com.wenye.trading-agent-daily      # 停用
 
 ## 6. 模型调用与死信
 
-`ops --explain` 用 `claude -p --tools ""` 处理解释请求队列：模型拿不到任何工具，提示词里只有入队时封存的上下文和输出 schema，输出必须通过 JSON schema。模型不可用、超时或输出不合格都算一次失败；连续 3 次（`config/engine.yaml` 的 `llm.max_retries`）转入死信队列并记 WARN。确定性流程（信号、订单、成交、盈亏、复盘）不受影响。
+`ops --explain` 用 `claude -p --tools "" --output-format json` 处理解释请求队列：模型拿不到任何工具，提示词里只有入队时封存的上下文和输出 schema，输出必须通过 JSON schema。模型不可用、超时或输出不合格都算一次失败；连续 3 次（`config/engine.yaml` 的 `llm.max_retries`）转入死信队列并记 WARN。确定性流程（信号、订单、成交、盈亏、复盘）不受影响。完成的请求在 `explanation_requests.model_id` 里记下实际生成它的模型（取自 JSON 输出的 `modelUsage`，不是配置里的别名 `ops.explain.model`）；migration 0011 之前完成的请求为 NULL。
 
 ```bash
 python -m trading_agent ops --dlq                  # 列出死信

@@ -132,7 +132,7 @@ uv run python -m trading_agent review --day 2026-11-10 --manual-only --seal
 
 ## 模型的位置
 
-本阶段不调用模型。每次复盘把一份压缩的结构化上下文（计数和观察说明，没有原始 K 线）放进已有的解释队列，类型 `SessionReview`，供以后接入模型在这份结果之上写叙述。队列目前没有消费者。
+本阶段不调用模型。每次复盘把一份压缩的结构化上下文（计数和观察说明，没有原始 K 线）放进已有的解释队列，类型 `SessionReview`，由模型在这份结果之上写叙述。消费者是阶段 10 的 `ops --explain`（见 `docs/ops-runbook.md`）；叙述只是解释，不改变复盘的观察、归因和候选。
 
 ## 数据表（migration 0005）
 
