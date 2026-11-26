@@ -322,7 +322,7 @@ token 按字符数保守估算（每 token 2 个字符）。超出预算时按�
 
 ### 解释请求队列
 
-`explanation_requests` 表。`enqueue_explanation` 连同快照 ID 入队；`fail_explanation` 登记一次失败，未到上限时留在队列里（快照不变），达到 `explanations.max_retries`（默认 3）时转入 `dead_letter_queue` 并写一条 `WARN` 告警；`complete_explanation` 标记完成。
+`explanation_requests` 表。`enqueue_explanation` 连同快照 ID 入队；`fail_explanation` 登记一次失败，未到上限时留在队列里（快照不变），达到 `explanations.max_retries`（默认 3）时转入 `dead_letter_queue` 并写一条 `WARN` 告警；`complete_explanation` 标记完成，并记下实际生成结果的模型 `model_id`（migration 0011；不知道时为 NULL）。
 
 ---
 

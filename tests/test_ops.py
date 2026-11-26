@@ -202,6 +202,29 @@ def test_explain_schema_retries_dead_letter_and_replay(env):
     rid2 = llm.enqueue_explanation(env.con, "ScanExplanation", {"x": 1}, event_id="e2", snapshot_id="s2")
     assert EX.run(env.settings, env.con, OCFG, eng, runner=boom)["retry"] == 1
     assert "封存" in EX.prompt_for(env.settings, "ScanExplanation", {"a": 1})
+    # 只返回 str 的执行器不报告模型：model_id 留 NULL
+    assert env.con.execute("SELECT model_id FROM explanation_requests WHERE request_id=?", (rid,)).fetchone()[0] is None
+
+
+def test_explain_records_model_id(env):
+    eng = load_engine(H.TEST_PROJECT)
+    rid = llm.enqueue_explanation(env.con, "ScanExplanation", {"x": 1}, event_id="e3", snapshot_id="s3")
+    stdout = json.dumps({"type": "result", "is_error": False,
+                         "result": json.dumps(TL.GOOD["ScanExplanation"], ensure_ascii=False),
+                         "modelUsage": {"claude-sonnet-5-5": {"outputTokens": 9}}})
+    r = EX.run(env.settings, env.con, OCFG, eng, runner=lambda p: EX.parse_claude_output(stdout))
+    assert r["done"] == 1 and r["items"][0]["model_id"] == "claude-sonnet-5-5"
+    assert env.con.execute("SELECT model_id FROM explanation_requests WHERE request_id=?",
+                           (rid,)).fetchone()[0] == "claude-sonnet-5-5"
+
+
+def test_parse_claude_output():
+    two = json.dumps({"result": "{}", "modelUsage": {"m-b": {}, "m-a": {}}})
+    assert EX.parse_claude_output(two) == EX.Reply("{}", "m-a,m-b")
+    assert EX.parse_claude_output(json.dumps({"result": "{}"})).model_id is None
+    for bad in ("not json", json.dumps({"is_error": True, "result": "x"}), json.dumps({"modelUsage": {}})):
+        with pytest.raises(RuntimeError):
+            EX.parse_claude_output(bad)
 
 
 # ---------------------------------------------------------------- 控制通道
@@ -424,6 +447,7 @@ def test_ops_scripts_are_samples_and_read_only():
     assert new and all(n.endswith(".plist.example") for n in new)               # 只有样例，没有可直接加载的 plist
     explain = (H.PROJECT / "src" / "trading_agent" / "ops" / "explain.py").read_text(encoding="utf-8")
     assert '"--tools", ""' in explain                                            # 模型调用不给任何工具
+    assert '"--output-format", "json"' in explain                               # 要拿到实际模型名
 
 
 def test_daily_catches_up_paper_run_without_intraday_ticks(env):

@@ -276,7 +276,7 @@ known_at = max( 桶结束时刻 + (有估计值依赖时加估计延迟), 各依
 | `engine_runs` | 引擎的每个运行：scope、模式、风险域、三个水位、当前策略状态 | 3 |
 | `paper_positions` | 纸面仓位：成交价、止损、目标、截止强平时刻、标记、绑定的版本元组 | 3 |
 | `paper_trades` | 已完结的纸面交易：盈亏、费用、两种 R、退出原因、标记 | 3 |
-| `explanation_requests` | 给模型的解释请求队列，带快照 ID 和尝试次数 | 3 起 |
+| `explanation_requests` | 给模型的解释请求队列，带快照 ID、尝试次数和生成结果的 `model_id`（migration 0011 起） | 3 起 |
 | `account_risk_days` | 真实账户按交易日的已实现亏损、预留、止损次数、是否停手 | 3（结构），4（使用） |
 | `account_risk_events` | 真实账户已完结交易的登记，按券商 ID 去重 | 3（结构），4（使用） |
 | `risk_reservations` | 人工计划的风险预留 | 3（结构），4（使用） |

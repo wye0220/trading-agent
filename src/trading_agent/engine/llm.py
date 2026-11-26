@@ -134,11 +134,13 @@ def pending_explanations(con: sqlite3.Connection, limit: int = 20) -> list[sqlit
                        " LIMIT ?", (limit,)).fetchall()
 
 
-def complete_explanation(con: sqlite3.Connection, request_id: str, result: Mapping) -> None:
+def complete_explanation(con: sqlite3.Connection, request_id: str, result: Mapping, *,
+                         model_id: str | None = None) -> None:
+    """标记完成。model_id 是实际生成结果的模型；不知道时留 NULL，不拿配置里的别名充数。"""
     with con:
-        con.execute("UPDATE explanation_requests SET status='DONE', result_json=?, version=version+1,"
+        con.execute("UPDATE explanation_requests SET status='DONE', result_json=?, model_id=?, version=version+1,"
                     " updated_at_utc=? WHERE request_id=? AND status='PENDING'",
-                    (json.dumps(dict(result), ensure_ascii=False), int(time.time()), request_id))
+                    (json.dumps(dict(result), ensure_ascii=False), model_id, int(time.time()), request_id))
 
 
 def fail_explanation(con: sqlite3.Connection, engine_cfg: EngineConfig, request_id: str, error: str) -> str:
